@@ -1,0 +1,5 @@
+{
+  "name": "Análise de Farmácia",
+  "description": "Um aplicativo para analisar o estoque, o índice de faltas e os itens parados de uma farmácia, a partir de planilhas de vendas e inventário.",
+  "requestFramePermissions": []
+}
