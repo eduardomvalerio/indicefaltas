@@ -23,3 +23,4 @@ dist-ssr
 *.sln
 *.sw?
 .angular/
+.angular/ # já está, mas não custa reforçar
