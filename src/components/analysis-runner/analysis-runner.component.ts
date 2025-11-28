@@ -2,6 +2,7 @@
 
 import { Component, ChangeDetectionStrategy, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { FileUploaderComponent } from '../file-uploader/file-uploader.component';
 import { DashboardComponent } from '../dashboard/dashboard.component';
@@ -16,9 +17,26 @@ import { UserContextService } from '../../services/user-context.service';
 @Component({
   selector: 'app-analysis-runner',
   standalone: true,
-  imports: [CommonModule, FileUploaderComponent, DashboardComponent],
+  imports: [CommonModule, FormsModule, FileUploaderComponent, DashboardComponent],
   template: `
 @if (!analysisResult()) {
+  <div class="mb-4 bg-white p-4 rounded-md shadow-sm border border-slate-100">
+    <h3 class="text-sm font-semibold text-slate-700 mb-3">Período da análise (dados enviados)</h3>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <label class="text-sm text-slate-600 flex flex-col gap-1">
+        Data inicial
+        <input type="date" class="border border-slate-300 rounded-md px-3 py-2 text-sm"
+               [(ngModel)]="periodoInicio">
+      </label>
+      <label class="text-sm text-slate-600 flex flex-col gap-1">
+        Data final
+        <input type="date" class="border border-slate-300 rounded-md px-3 py-2 text-sm"
+               [(ngModel)]="periodoFim">
+      </label>
+    </div>
+    <p class="text-xs text-slate-500 mt-2">Opcional: use para registrar a faixa de datas coberta pelos arquivos (ex.: últimos 90 dias).</p>
+  </div>
+
   <app-file-uploader 
     (analysisComplete)="onAnalysisComplete($event)"
     (filesSelected)="handleFileSelection($event)"
@@ -56,6 +74,8 @@ export class AnalysisRunnerComponent implements OnInit {
   analysisResult = signal<AnalysisResult | null>(null);
   isSaving = signal(false);
   saveError = signal<string | null>(null);
+  periodoInicio = '';
+  periodoFim = '';
 
   private clientId: string | null = null;
   private salesFile: File | null = null;
@@ -105,16 +125,22 @@ export class AnalysisRunnerComponent implements OnInit {
           `${basePath}/inventario.xlsx`,
           this.inventoryFile
         );
+        const { topFaltas, topExcessos, topParados } = this.computeTops(result);
 
         await this.persistService.saveRun({
           org_id: orgId,
           cliente_id: this.clientId,
           created_by: user.id,
           periodo_dias: 90,
+          periodo_inicio: this.periodoInicio || null,
+          periodo_fim: this.periodoFim || null,
           algoritmo_versao: 'v1.0.1',
           path_vendas: pathVendas,
           path_inventario: pathInventario,
           summary: result.summary,
+          top_faltas: topFaltas,
+          top_excessos: topExcessos,
+          top_parados: topParados,
         });
       } catch (e: any) {
         this.saveError.set(e.message || 'Erro ao salvar a análise na nuvem.');
@@ -129,6 +155,43 @@ export class AnalysisRunnerComponent implements OnInit {
     this.analysisResult.set(null);
     this.salesFile = null;
     this.inventoryFile = null;
+    this.periodoInicio = '';
+    this.periodoFim = '';
+  }
+
+  private computeTops(result: AnalysisResult): { topFaltas: any[]; topExcessos: any[]; topParados: any[] } {
+    const formatItem = (p: any) => ({
+      descricao: p.descricaoConsolidada,
+      curva: p.Curva_ABC,
+      ean: p.EAN_consolidado,
+      codigo_interno: p.codigoInterno,
+      falta: !!p.flag_falta,
+      excesso_valor: p.excessoValor ?? 0,
+      custo_unitario: p.custoUnitario ?? 0,
+      estoque_atual: p.estoqueAtualConsolidado ?? p.estoqueAtualInventario ?? p.estoqueAtualVendas ?? 0,
+      venda_liquida_90d: p.valorVendaLiquidaTotal ?? 0,
+      quantidade_vendida_90d: p.quantidadeVendida90d ?? 0,
+    });
+
+    const faltas = (result.faltas || [])
+      .filter((p) => p.flag_falta)
+      .sort((a, b) => (b.valorVendaLiquidaTotal ?? 0) - (a.valorVendaLiquidaTotal ?? 0))
+      .slice(0, 20)
+      .map(formatItem);
+
+    const excessos = (result.consolidated || [])
+      .filter((p) => (p.excessoValor ?? 0) > 0 || p.flag_excesso)
+      .sort((a, b) => (b.excessoValor ?? 0) - (a.excessoValor ?? 0))
+      .slice(0, 20)
+      .map(formatItem);
+
+    const parados = (result.parados || [])
+      .filter((p) => p.flag_parado)
+      .sort((a, b) => (b.custoUnitario ?? 0) - (a.custoUnitario ?? 0))
+      .slice(0, 10)
+      .map(formatItem);
+
+    return { topFaltas: faltas, topExcessos: excessos, topParados: parados };
   }
 
   private async resolveOrgId(userId: string): Promise<string | null> {

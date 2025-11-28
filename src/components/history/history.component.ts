@@ -7,6 +7,8 @@ import { ActivatedRoute } from '@angular/router';
 
 import { SupaService } from '../../services/supa.service';
 import { AnaliseRun } from '../../models/supabase.model';
+import { AssistantService, FarmaciaContext } from '../../services/assistant.service';
+import { Cliente } from '../../models/supabase.model';
 
 // Declara a variável global Chart para que o TypeScript a reconheça.
 // A biblioteca é carregada via <script> no index.html.
@@ -56,29 +58,133 @@ declare var Chart: any;
           <thead class="bg-slate-50">
             <tr>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data</th>
+              <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Período analisado</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">% Faltas (Geral)</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Excesso (R$)</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Dias de Estoque</th>
-              <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Versão</th>
+              <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Análise</th>
+              <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Análise Natasha</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-slate-200">
             @for(run of runs(); track run.id){
               <tr>
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{{ run.created_at | date:'dd/MM/yyyy HH:mm' }}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{{ formatPeriodo(run) }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-semibold">{{ run.summary.indiceFaltas | number:'1.2-2' }}%</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-amber-600">{{ run.summary.excessoValorTotal | number:'1.2-2':'pt-BR' }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{{ run.summary.diasEstoqueMedioGeral | number:'1.0-0' }} dias</td>
-                <td class="px-6 py-4 whitespace-nowrap text-sm text-center text-slate-500">
-                    <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-slate-100 text-slate-800">
-                      {{ run.algoritmo_versao }}
-                    </span>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                  <button
+                    class="px-3 py-1 bg-white border border-slate-300 text-slate-700 rounded-md text-xs font-semibold hover:bg-slate-100 transition-colors"
+                    (click)="verAnalise(run)">
+                    Ver análise
+                  </button>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                  <button
+                    class="px-3 py-1 bg-sky-600 text-white rounded-md text-xs font-semibold hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                    (click)="gerarNatasha(run)"
+                    [disabled]="isGenerating() && selectedRunId() === run.id"
+                  >
+                    @if(isGenerating() && selectedRunId() === run.id){Gerando...}
+                    @else if (natashaCache()[run.id]) {Ver relatório}
+                    @else {Análise Natasha}
+                  </button>
                 </td>
               </tr>
             }
           </tbody>
         </table>
       </div>
+
+      @if(natashaReport()){
+        <div class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold text-slate-800">Relatório Natasha</h3>
+            <div class="space-x-2">
+              <button class="px-3 py-1 bg-white border border-slate-300 rounded-md text-sm hover:bg-slate-100"
+                      (click)="exportarPDF()">
+                Exportar PDF
+              </button>
+              <button class="px-3 py-1 text-slate-500 text-sm hover:text-slate-700" (click)="limparRelatorio()">Fechar</button>
+            </div>
+          </div>
+          <div class="prose max-w-none text-justify leading-relaxed whitespace-pre-line">{{ natashaReport() }}</div>
+        </div>
+      }
+
+      @if(genError()){
+        <div class="mt-4 p-3 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-r-lg">
+          <p class="font-semibold">Erro na análise Natasha</p>
+          <p>{{ genError() }}</p>
+        </div>
+      }
+
+      @if(selectedRun()){
+        <div class="mt-8 bg-white p-6 rounded-lg shadow-lg border border-slate-200">
+          <h3 class="text-xl font-semibold text-slate-800 mb-4">Análise detalhada</h3>
+          <p class="text-sm text-slate-600 mb-4">
+            Cliente: {{ cliente()?.nome_fantasia }} — Período: {{ formatPeriodo(selectedRun()!) }}
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">Índice de Faltas</p>
+              <p class="text-2xl font-bold text-red-600">{{ selectedRun()!.summary.indiceFaltas | number:'1.2-2' }}%</p>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">Excesso (R$)</p>
+              <p class="text-2xl font-bold text-amber-600">{{ selectedRun()!.summary.excessoValorTotal | number:'1.2-2':'pt-BR' }}</p>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">Dias de Estoque</p>
+              <p class="text-2xl font-bold text-blue-600">{{ selectedRun()!.summary.diasEstoqueMedioGeral | number:'1.0-0' }} dias</p>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">SKUs</p>
+              <p class="text-2xl font-bold text-slate-800">{{ selectedRun()!.summary.totalSKUs | number:'1.0-0' }}</p>
+              <p class="text-sm text-slate-600">Com venda: {{ selectedRun()!.summary.skusComVenda | number:'1.0-0' }} · Em falta: {{ selectedRun()!.summary.skusEmFalta | number:'1.0-0' }}</p>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">Parados (unidades / R$)</p>
+              <p class="text-lg font-semibold text-slate-800">
+                {{ selectedRun()!.summary.estoqueParadoUnidades | number:'1.0-0' }} un ·
+                {{ selectedRun()!.summary.estoqueParadoValor | number:'1.2-2':'pt-BR' }}
+              </p>
+            </div>
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-xs text-slate-500 uppercase">Faturamento 90d</p>
+              <p class="text-lg font-semibold text-slate-800">{{ selectedRun()!.summary.vendaTrimestre | number:'1.2-2':'pt-BR' }}</p>
+              <p class="text-sm text-slate-600">Lucro bruto: {{ selectedRun()!.summary.lucroBrutoTrimestre | number:'1.2-2':'pt-BR' }} ({{ selectedRun()!.summary.margemBrutaPercent | number:'1.1-1' }}%)</p>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-slate-200">
+              <thead class="bg-slate-50">
+                <tr>
+                  <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Curva</th>
+                  <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">SKUs</th>
+                  <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Ruptura (%)</th>
+                  <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Dias de estoque</th>
+                  <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Excesso (R$)</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-slate-200">
+                @for(c of selectedRun()!.summary.curvas; track c.curva){
+                  <tr>
+                    <td class="px-4 py-2 text-sm font-semibold text-slate-800">{{ c.curva }}</td>
+                    <td class="px-4 py-2 text-sm text-right text-slate-700">{{ c.skus | number:'1.0-0' }}</td>
+                    <td class="px-4 py-2 text-sm text-right text-red-600">{{ c.faltaPercent | number:'1.1-1' }}%</td>
+                    <td class="px-4 py-2 text-sm text-right text-blue-600">{{ c.diasEstoqueMedio | number:'1.0-0' }} dias</td>
+                    <td class="px-4 py-2 text-sm text-right text-amber-600">{{ c.excessoValor | number:'1.2-2':'pt-BR' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+      }
     </div>
   </div>
 }
@@ -89,12 +195,23 @@ export class HistoryComponent implements OnInit, AfterViewInit {
   @ViewChild('historyChart') chartCanvas!: ElementRef<HTMLCanvasElement>;
 
   runs = signal<AnaliseRun[]>([]);
+  cliente = signal<Cliente | null>(null);
   isLoading = signal(true);
   error = signal<string | null>(null);
+  isGenerating = signal(false);
+  genError = signal<string | null>(null);
+  natashaReport = signal<string | null>(null);
+  selectedRunId = signal<string | null>(null);
+  natashaCache = signal<Record<string, string>>({});
   isViewReady = signal(false);
+  selectedRun = signal<AnaliseRun | null>(null);
   private chart: any;
 
-  constructor(private route: ActivatedRoute, private supaService: SupaService) {
+  constructor(
+    private route: ActivatedRoute,
+    private supaService: SupaService,
+    private assistant: AssistantService
+  ) {
     effect(() => {
       // This effect runs when runs() or isViewReady() changes.
       // It ensures the chart is created only when both data and the canvas are ready.
@@ -108,6 +225,7 @@ export class HistoryComponent implements OnInit, AfterViewInit {
     const clientId = this.route.parent?.snapshot.paramMap.get('clientId');
     if (clientId) {
       this.loadHistory(clientId);
+      this.loadCliente(clientId);
     } else {
       this.error.set('ID do cliente não encontrado.');
       this.isLoading.set(false);
@@ -131,7 +249,14 @@ export class HistoryComponent implements OnInit, AfterViewInit {
 
       if (error) throw error;
 
-      this.runs.set(data as AnaliseRun[]);
+      const runsData = data as AnaliseRun[];
+      this.runs.set(runsData);
+      // Pré-carrega relatórios já existentes no cache
+      const cache: Record<string, string> = {};
+      runsData.forEach((r) => {
+        if (r.natasha_report) cache[r.id] = r.natasha_report;
+      });
+      this.natashaCache.set(cache);
       // The chart will be created by the effect when this signal is set.
     } catch (e: any) {
       this.error.set(e.message || 'Erro ao buscar o histórico.');
@@ -170,5 +295,183 @@ export class HistoryComponent implements OnInit, AfterViewInit {
         },
       },
     });
+  }
+
+  async loadCliente(id: string): Promise<void> {
+    try {
+      const { data, error } = await this.supaService.client.from('clientes').select('*').eq('id', id).maybeSingle();
+      if (!error && data) this.cliente.set(data as Cliente);
+    } catch (err) {
+      console.error('Erro ao buscar cliente', err);
+    }
+  }
+
+  gerarNatasha(run: AnaliseRun): void {
+    // Se já existir em cache, só exibe
+    const cached = this.natashaCache()[run.id];
+    if (cached && cached.trim().toLowerCase() !== 'sem resposta') {
+      this.natashaReport.set(cached);
+      this.selectedRunId.set(run.id);
+      return;
+    }
+
+    this.isGenerating.set(true);
+    this.genError.set(null);
+    this.natashaReport.set(null);
+    this.selectedRunId.set(run.id);
+
+    const previous = this.getPreviousRun(run.id);
+    const ctx = this.montarContexto(run, previous);
+
+    this.assistant.analisarFarmacia(ctx).subscribe({
+      next: (resp) => {
+        const report = resp.answer;
+        const isEmpty = !report || report.trim().toLowerCase() === 'sem resposta';
+        if (!isEmpty) {
+          this.natashaReport.set(report);
+          this.setCache(run.id, report);
+          this.salvarNatasha(run.id, report);
+        } else {
+          // Não cacheia respostas vazias para permitir tentar novamente
+          this.natashaReport.set('Sem resposta');
+        }
+        this.isGenerating.set(false);
+      },
+      error: (err) => {
+        this.genError.set(err?.message || 'Erro ao gerar análise Natasha.');
+        this.isGenerating.set(false);
+      },
+    });
+  }
+
+  limparRelatorio(): void {
+    this.natashaReport.set(null);
+    this.selectedRunId.set(null);
+  }
+
+  verAnalise(run: AnaliseRun): void {
+    this.selectedRun.set(run);
+  }
+
+  exportarPDF(): void {
+    const report = this.natashaReport();
+    if (!report) return;
+    const titulo = this.cliente()?.nome_fantasia ?? 'Relatório';
+    const win = window.open('', '_blank', 'width=900,height=1200');
+    if (!win) return;
+    const style = `
+      <style>
+        body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; line-height: 1.6; color: #1f2937; }
+        h1 { font-size: 22px; margin-bottom: 12px; font-weight: 700; }
+        p { text-align: justify; }
+        .topic { font-weight: 700; margin-top: 12px; margin-bottom: 4px; }
+      </style>
+    `;
+    const html = `
+      <html>
+        <head>${style}</head>
+        <body>
+          <h1>${titulo} — Relatório Natasha</h1>
+          <pre style="white-space: pre-wrap; text-align: justify;">${report}</pre>
+        </body>
+      </html>
+    `;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  private montarContexto(run: AnaliseRun, previous: AnaliseRun | null): FarmaciaContext {
+    const s = run.summary;
+    const curva = (sigla: 'A' | 'B' | 'C') =>
+      s.curvas.find((c) => c.curva === sigla) || {
+        curva: sigla,
+        skus: 0,
+        skusParados: 0,
+        skusEmFalta: 0,
+        venda90d: 0,
+        cmv90d: 0,
+        lucroBruto90d: 0,
+        estoqueParadoUnidades: 0,
+        estoqueParadoValor: 0,
+        excessoUnidades: 0,
+        excessoValor: 0,
+        diasEstoqueMedio: 0,
+        faltaPercent: 0,
+      };
+
+    const ticketMedio =
+      s.unidadesVendidasTrimestre > 0 ? s.vendaTrimestre / s.unidadesVendidasTrimestre : s.vendaTrimestre;
+
+    const alertas: string[] = [];
+    alertas.push(`Sem giro: ${s.skusParados} SKUs parados`);
+    alertas.push(`Excesso: R$ ${s.excessoValorTotal.toFixed(2)} em excesso total`);
+    alertas.push(`Faltas: ${s.skusEmFalta} SKUs em falta, índice de faltas ${s.indiceFaltas.toFixed(2)}%`);
+
+    const cliente = this.cliente();
+
+    return {
+      cliente: {
+        id: run.cliente_id,
+        nome: cliente?.nome_fantasia ?? 'Cliente',
+        cidade: cliente?.cidade,
+        uf: cliente?.uf,
+      },
+      periodo: `últimos ${run.periodo_dias} dias`,
+      kpis: {
+        faturamento: s.vendaTrimestre,
+        lucro_bruto: s.lucroBrutoTrimestre,
+        ruptura_percent: s.indiceFaltas,
+        ticket_medio: ticketMedio,
+      },
+      curva: {
+        A: { skus: curva('A').skus, ruptura: curva('A').faltaPercent, estoque_dias: curva('A').diasEstoqueMedio },
+        B: { skus: curva('B').skus, ruptura: curva('B').faltaPercent, estoque_dias: curva('B').diasEstoqueMedio },
+        C: { skus: curva('C').skus, ruptura: curva('C').faltaPercent, estoque_dias: curva('C').diasEstoqueMedio },
+      },
+      alertas,
+      acoes_ja_tomadas: [],
+      ruptura_anterior_percent: previous?.summary?.indiceFaltas,
+      top_faltas: Array.isArray(run.top_faltas) ? run.top_faltas.slice(0, 20) : undefined,
+      top_excessos: Array.isArray(run.top_excessos) ? run.top_excessos.slice(0, 20) : undefined,
+      top_parados: Array.isArray(run.top_parados) ? run.top_parados.slice(0, 10) : undefined,
+    };
+  }
+
+  private getPreviousRun(currentRunId: string): AnaliseRun | null {
+    // runs() está ordenado desc por data; pega o run seguinte na lista como "anterior"
+    const idx = this.runs().findIndex((r) => r.id === currentRunId);
+    if (idx === -1) return null;
+    return this.runs()[idx + 1] ?? null;
+  }
+
+  private setCache(runId: string, report: string): void {
+    const next = { ...this.natashaCache(), [runId]: report };
+    this.natashaCache.set(next);
+  }
+
+  formatPeriodo(run: AnaliseRun): string {
+    if (run.periodo_inicio && run.periodo_fim) {
+      const ini = new Date(run.periodo_inicio);
+      const fim = new Date(run.periodo_fim);
+      const fmt = (d: Date) => d.toLocaleDateString('pt-BR');
+      return `${fmt(ini)} — ${fmt(fim)}`;
+    }
+    return `últimos ${run.periodo_dias} dias`;
+  }
+
+  private async salvarNatasha(runId: string, report: string): Promise<void> {
+    try {
+      const { error } = await this.supaService.client
+        .from('analise_runs')
+        .update({ natasha_report: report })
+        .eq('id', runId);
+      if (error) throw error;
+    } catch (err) {
+      console.error('Erro ao salvar natasha_report', err);
+      // Exibe aviso, mas mantém o relatório em tela/cache
+      this.genError.set('Relatório gerado, mas não foi possível salvar no histórico.');
+    }
   }
 }

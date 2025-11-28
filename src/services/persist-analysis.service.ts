@@ -10,8 +10,12 @@ export class PersistAnalysisService {
   async saveRun(params: {
     org_id: string; cliente_id: string; created_by: string;
     periodo_dias: number; algoritmo_versao: string;
+    periodo_inicio?: string | null; periodo_fim?: string | null;
     path_vendas?: string; path_inventario?: string;
     summary: SummaryData;
+    top_faltas?: any;
+    top_excessos?: any;
+    top_parados?: any;
   }): Promise<AnaliseRun> {
 
     const { data: run, error: runError } = await this.supaService.client
@@ -21,10 +25,15 @@ export class PersistAnalysisService {
         cliente_id: params.cliente_id,
         created_by: params.created_by,
         periodo_dias: params.periodo_dias,
+        periodo_inicio: params.periodo_inicio ?? null,
+        periodo_fim: params.periodo_fim ?? null,
         algoritmo_versao: params.algoritmo_versao,
         path_vendas: params.path_vendas ?? null,
         path_inventario: params.path_inventario ?? null,
         summary: params.summary as any,
+        top_faltas: params.top_faltas ?? null,
+        top_excessos: params.top_excessos ?? null,
+        top_parados: params.top_parados ?? null,
       })
       .select()
       .single();

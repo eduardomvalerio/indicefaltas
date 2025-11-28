@@ -18,10 +18,16 @@ export interface AnaliseRun {
   created_at: string;
   created_by: string;
   periodo_dias: number;
+  periodo_inicio?: string | null;
+  periodo_fim?: string | null;
   algoritmo_versao: string;
   path_vendas?: string;
   path_inventario?: string;
   summary: SummaryData;
+  natasha_report?: string | null;
+  top_faltas?: any;
+  top_excessos?: any;
+  top_parados?: any;
 }
 
 // Corresponde à tabela 'org_members'

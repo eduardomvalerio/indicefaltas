@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .angular/
 .angular/ # já está, mas não custa reforçar
+# Temporary SSH files (local only)
+.tmp_ssh_key
+.tmp_ssh_key.pub
+.tmp_known_hosts
