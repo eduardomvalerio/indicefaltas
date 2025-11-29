@@ -70,13 +70,16 @@ export class AnalysisService {
 
   validateColumns(salesData: SalesRecord[], inventoryData: InventoryRecord[]): string | null {
     if (!salesData?.length) return 'A planilha de vendas está vazia ou não pôde ser lida.';
-    if (!inventoryData?.length) return 'A planilha de inventário está vazia ou não pôde ser lida.';
     const salesHeader = Object.keys(salesData[0] ?? {});
-    const inventoryHeader = Object.keys(inventoryData[0] ?? {});
     for (const col of this.SALES_REQUIRED_COLS)
       if (!salesHeader.includes(col)) return `Coluna obrigatória ausente na planilha de Vendas: '${col}'.`;
-    for (const col of this.INVENTORY_REQUIRED_COLS)
-      if (!inventoryHeader.includes(col)) return `Coluna obrigatória ausente na planilha de Inventário: '${col}'.`;
+
+    // Inventário agora é opcional: só valida se houver dados
+    if (inventoryData?.length) {
+      const inventoryHeader = Object.keys(inventoryData[0] ?? {});
+      for (const col of this.INVENTORY_REQUIRED_COLS)
+        if (!inventoryHeader.includes(col)) return `Coluna obrigatória ausente na planilha de Inventário: '${col}'.`;
+    }
     return null;
   }
 

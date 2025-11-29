@@ -24,7 +24,7 @@ import { AnalysisService } from '../../services/analysis.service';
         <p class="font-semibold">Instruções:</p>
         <ul class="list-disc list-inside mt-1 text-sm">
             <li>Envie primeiro a planilha de <strong class="font-semibold">vendas/índice de faltas</strong> (últimos 90 dias).</li>
-            <li>Em seguida, envie a planilha de <strong class="font-semibold">inventário</strong> (posição atual completa).</li>
+            <li>A planilha de <strong class="font-semibold">inventário</strong> é opcional. Sem ela, a análise usa apenas Vendas.</li>
             <li>Certifique-se que os nomes das colunas obrigatórias estão corretos.</li>
         </ul>
     </div>
@@ -44,7 +44,7 @@ import { AnalysisService } from '../../services/analysis.service';
       
       <!-- Inventory File Upload -->
       <div>
-        <label for="inventory-file" class="block text-sm font-medium text-slate-700 mb-2">2. Planilha de Inventário</label>
+        <label for="inventory-file" class="block text-sm font-medium text-slate-700 mb-2">2. Planilha de Inventário (opcional)</label>
         <label class="w-full flex items-center px-4 py-3 bg-white text-sky-600 rounded-lg shadow-sm tracking-wide border border-sky-300 cursor-pointer hover:bg-sky-100 hover:text-sky-700 transition-colors">
           <svg class="w-8 h-8" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
             <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4 4-4-4h3V9h2v2z" />
@@ -65,7 +65,7 @@ import { AnalysisService } from '../../services/analysis.service';
     <div class="pt-4">
       <button 
         (click)="processFiles()" 
-        [disabled]="!salesFile() || !inventoryFile() || isLoading()" 
+        [disabled]="!salesFile() || isLoading()" 
         class="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-sky-600 hover:bg-sky-700 disabled:bg-slate-400 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-500 transition-all">
         @if (isLoading()) {
           <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -86,7 +86,7 @@ import { AnalysisService } from '../../services/analysis.service';
 })
 export class FileUploaderComponent {
   analysisComplete = output<AnalysisResult>();
-  filesSelected = output<{ sales: File; inventory: File }>();
+  filesSelected = output<{ sales: File; inventory: File | null }>();
 
   salesFile = signal<File | null>(null);
   inventoryFile = signal<File | null>(null);
@@ -110,8 +110,8 @@ export class FileUploaderComponent {
       }
       this.error.set(null);
 
-      if (this.salesFile() && this.inventoryFile()) {
-        this.filesSelected.emit({ sales: this.salesFile()!, inventory: this.inventoryFile()! });
+      if (this.salesFile()) {
+        this.filesSelected.emit({ sales: this.salesFile()!, inventory: this.inventoryFile() });
       }
     }
   }
@@ -119,8 +119,8 @@ export class FileUploaderComponent {
   async processFiles(): Promise<void> {
     const salesFile = this.salesFile();
     const inventoryFile = this.inventoryFile();
-    if (!salesFile || !inventoryFile) {
-      this.error.set('Por favor, envie os dois arquivos para continuar.');
+    if (!salesFile) {
+      this.error.set('Por favor, selecione o arquivo de vendas.');
       return;
     }
 
@@ -129,7 +129,9 @@ export class FileUploaderComponent {
 
     try {
       const salesData = await this.excelService.readExcelFile<SalesRecord>(salesFile);
-      const inventoryData = await this.excelService.readExcelFile<InventoryRecord>(inventoryFile);
+      const inventoryData = inventoryFile
+        ? await this.excelService.readExcelFile<InventoryRecord>(inventoryFile)
+        : [];
 
       const validationError = this.analysisService.validateColumns(salesData, inventoryData);
       if (validationError) {
