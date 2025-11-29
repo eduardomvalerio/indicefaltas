@@ -574,16 +574,13 @@ export class HistoryComponent implements OnInit, AfterViewInit {
       .then(({ error }) => {
         if (error) {
           this.genError.set(error.message || 'Erro ao excluir análise.');
-        } else {
-          this.runs.set(this.runs().filter((r) => r.id !== run.id));
-          if (this.selectedRunId() === run.id) {
-            this.selectedRun.set(null);
-            this.natashaReport.set(null);
-          }
+          return;
         }
-      })
-      .catch((err) => {
-        this.genError.set(err?.message || 'Erro ao excluir análise.');
+        this.runs.set(this.runs().filter((r) => r.id !== run.id));
+        if (this.selectedRunId() === run.id) {
+          this.selectedRun.set(null);
+          this.natashaReport.set(null);
+        }
       });
   }
 }
