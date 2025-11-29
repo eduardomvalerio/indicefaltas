@@ -28,6 +28,9 @@ export interface AnaliseRun {
   top_faltas?: any;
   top_excessos?: any;
   top_parados?: any;
+  consolidated?: any;
+  faltas?: any;
+  parados?: any;
 }
 
 // Corresponde à tabela 'org_members'

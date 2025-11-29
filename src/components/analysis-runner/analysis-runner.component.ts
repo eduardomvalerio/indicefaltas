@@ -144,6 +144,9 @@ export class AnalysisRunnerComponent implements OnInit {
           top_faltas: topFaltas,
           top_excessos: topExcessos,
           top_parados: topParados,
+          consolidated: result.consolidated ?? null,
+          faltas: result.faltas ?? null,
+          parados: result.parados ?? null,
         });
       } catch (e: any) {
         this.saveError.set(e.message || 'Erro ao salvar a análise na nuvem.');

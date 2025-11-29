@@ -16,6 +16,9 @@ export class PersistAnalysisService {
     top_faltas?: any;
     top_excessos?: any;
     top_parados?: any;
+    consolidated?: any;
+    faltas?: any;
+    parados?: any;
   }): Promise<AnaliseRun> {
 
     const { data: run, error: runError } = await this.supaService.client
@@ -34,6 +37,9 @@ export class PersistAnalysisService {
         top_faltas: params.top_faltas ?? null,
         top_excessos: params.top_excessos ?? null,
         top_parados: params.top_parados ?? null,
+        consolidated: params.consolidated ?? null,
+        faltas: params.faltas ?? null,
+        parados: params.parados ?? null,
       })
       .select()
       .single();

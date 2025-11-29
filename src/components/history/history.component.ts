@@ -183,6 +183,63 @@ declare var Chart: any;
               </tbody>
             </table>
           </div>
+
+          <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-sm font-semibold text-slate-700 mb-2">Itens em falta</p>
+              <p class="text-xs text-slate-500 mb-3">Listagem salva na análise. Baixe para ver todos.</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-600">Registros: {{ getFaltas(selectedRun()!).length }}</span>
+                <div class="space-x-2">
+                  <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                          (click)="downloadCsv('faltas', getFaltas(selectedRun()!))">Baixar CSV</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-sm font-semibold text-slate-700 mb-2">Itens em excesso</p>
+              <p class="text-xs text-slate-500 mb-3">Itens com excesso > 0 salvos no run.</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-600">Registros: {{ getExcessos(selectedRun()!).length }}</span>
+                <div class="space-x-2">
+                  <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                          (click)="downloadCsv('excessos', getExcessos(selectedRun()!))">Baixar CSV</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-sm font-semibold text-slate-700 mb-2">Itens parados</p>
+              <p class="text-xs text-slate-500 mb-3">Sem giro; ordenados por custo.</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-600">Registros: {{ getParados(selectedRun()!).length }}</span>
+                <div class="space-x-2">
+                  <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                          (click)="downloadCsv('parados', getParados(selectedRun()!))">Baixar CSV</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
+              <p class="text-sm font-semibold text-slate-700 mb-2">Base consolidada</p>
+              <p class="text-xs text-slate-500 mb-3">Todos os SKUs processados nesta análise.</p>
+              <div class="flex items-center justify-between">
+                <span class="text-sm text-slate-600">Registros: {{ selectedRun()?.consolidated?.length || 0 }}</span>
+                <div class="space-x-2">
+                  <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
+                          (click)="downloadCsv('consolidado', selectedRun()?.consolidated || [])">Baixar CSV</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-6 flex justify-end">
+            <button class="px-3 py-2 text-sm text-red-600 border border-red-200 rounded-md hover:bg-red-50"
+                    (click)="excluirAnalise(selectedRun()!)">
+              Excluir análise
+            </button>
+          </div>
         </div>
       }
     </div>
@@ -353,6 +410,39 @@ export class HistoryComponent implements OnInit, AfterViewInit {
     this.selectedRun.set(run);
   }
 
+  getFaltas(run: AnaliseRun): any[] {
+    if (Array.isArray(run.faltas) && run.faltas.length) return run.faltas;
+    const cons = run.consolidated || [];
+    return cons.filter((p: any) => p.flag_falta);
+  }
+
+  getExcessos(run: AnaliseRun): any[] {
+    const cons = run.consolidated || [];
+    return cons.filter((p: any) => (p.excessoValor ?? 0) > 0 || p.flag_excesso);
+  }
+
+  getParados(run: AnaliseRun): any[] {
+    if (Array.isArray(run.parados) && run.parados.length) return run.parados;
+    const cons = run.consolidated || [];
+    return cons.filter((p: any) => p.flag_parado);
+  }
+
+  downloadCsv(name: string, rows: any[]): void {
+    if (!rows || !rows.length) return;
+    const headers = Object.keys(rows[0]);
+    const csv = [
+      headers.join(','),
+      ...rows.map((r) => headers.map((h) => JSON.stringify(r[h] ?? '')).join(',')),
+    ].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   exportarPDF(): void {
     const report = this.natashaReport();
     if (!report) return;
@@ -473,5 +563,24 @@ export class HistoryComponent implements OnInit, AfterViewInit {
       // Exibe aviso, mas mantém o relatório em tela/cache
       this.genError.set('Relatório gerado, mas não foi possível salvar no histórico.');
     }
+  }
+
+  excluirAnalise(run: AnaliseRun): void {
+    if (!confirm('Deseja excluir esta análise? Esta ação não poderá ser desfeita.')) return;
+    this.supaService.client
+      .from('analise_runs')
+      .delete()
+      .eq('id', run.id)
+      .then(({ error }) => {
+        if (error) {
+          this.genError.set(error.message || 'Erro ao excluir análise.');
+        } else {
+          this.runs.set(this.runs().filter((r) => r.id !== run.id));
+          if (this.selectedRunId() === run.id) {
+            this.selectedRun.set(null);
+            this.natashaReport.set(null);
+          }
+        }
+      });
   }
 }
