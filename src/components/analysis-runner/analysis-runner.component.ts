@@ -94,7 +94,7 @@ export class AnalysisRunnerComponent implements OnInit {
     this.clientId = this.route.parent?.snapshot.paramMap.get('clientId') ?? null;
   }
 
-  handleFileSelection(files: { sales: File; inventory: File }): void {
+  handleFileSelection(files: { sales: File; inventory: File | null }): void {
     this.salesFile = files.sales;
     this.inventoryFile = files.inventory;
   }
@@ -102,7 +102,7 @@ export class AnalysisRunnerComponent implements OnInit {
   async onAnalysisComplete(result: AnalysisResult): Promise<void> {
     this.analysisResult.set(result);
 
-    if (environment.enableCloudSave && this.clientId && this.salesFile && this.inventoryFile) {
+    if (environment.enableCloudSave && this.clientId && this.salesFile) {
       this.isSaving.set(true);
       this.saveError.set(null);
       try {
@@ -120,11 +120,14 @@ export class AnalysisRunnerComponent implements OnInit {
           `${basePath}/vendas.xlsx`,
           this.salesFile
         );
-        const pathInventario = await this.storageService.upload(
-          'farmacia-analises',
-          `${basePath}/inventario.xlsx`,
-          this.inventoryFile
-        );
+        let pathInventario: string | null = null;
+        if (this.inventoryFile) {
+          pathInventario = await this.storageService.upload(
+            'farmacia-analises',
+            `${basePath}/inventario.xlsx`,
+            this.inventoryFile
+          );
+        }
         const { topFaltas, topExcessos, topParados } = this.computeTops(result);
 
         await this.persistService.saveRun({
