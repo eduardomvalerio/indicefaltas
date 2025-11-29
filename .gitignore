@@ -28,3 +28,4 @@ dist-ssr
 .tmp_ssh_key
 .tmp_ssh_key.pub
 .tmp_known_hosts
+supabase/.temp/
