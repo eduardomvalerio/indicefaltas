@@ -581,6 +581,9 @@ export class HistoryComponent implements OnInit, AfterViewInit {
             this.natashaReport.set(null);
           }
         }
+      })
+      .catch((err) => {
+        this.genError.set(err?.message || 'Erro ao excluir análise.');
       });
   }
 }
