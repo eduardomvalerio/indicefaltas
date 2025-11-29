@@ -192,7 +192,7 @@ declare var Chart: any;
                 <span class="text-sm text-slate-600">Registros: {{ getFaltas(selectedRun()!).length }}</span>
                 <div class="space-x-2">
                   <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-                          (click)="downloadCsv('faltas', getFaltas(selectedRun()!))">Baixar CSV</button>
+                          (click)="downloadXlsxLike('faltas', getFaltas(selectedRun()!))">Baixar XLS</button>
                 </div>
               </div>
             </div>
@@ -204,7 +204,7 @@ declare var Chart: any;
                 <span class="text-sm text-slate-600">Registros: {{ getExcessos(selectedRun()!).length }}</span>
                 <div class="space-x-2">
                   <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-                          (click)="downloadCsv('excessos', getExcessos(selectedRun()!))">Baixar CSV</button>
+                          (click)="downloadXlsxLike('excessos', getExcessos(selectedRun()!))">Baixar XLS</button>
                 </div>
               </div>
             </div>
@@ -216,7 +216,7 @@ declare var Chart: any;
                 <span class="text-sm text-slate-600">Registros: {{ getParados(selectedRun()!).length }}</span>
                 <div class="space-x-2">
                   <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-                          (click)="downloadCsv('parados', getParados(selectedRun()!))">Baixar CSV</button>
+                          (click)="downloadXlsxLike('parados', getParados(selectedRun()!))">Baixar XLS</button>
                 </div>
               </div>
             </div>
@@ -228,7 +228,7 @@ declare var Chart: any;
                 <span class="text-sm text-slate-600">Registros: {{ selectedRun()?.consolidated?.length || 0 }}</span>
                 <div class="space-x-2">
                   <button class="px-3 py-1 text-xs rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-slate-100"
-                          (click)="downloadCsv('consolidado', selectedRun()?.consolidated || [])">Baixar CSV</button>
+                          (click)="downloadXlsxLike('consolidado', selectedRun()?.consolidated || [])">Baixar XLS</button>
                 </div>
               </div>
             </div>
@@ -427,18 +427,22 @@ export class HistoryComponent implements OnInit, AfterViewInit {
     return cons.filter((p: any) => p.flag_parado);
   }
 
-  downloadCsv(name: string, rows: any[]): void {
+  downloadXlsxLike(name: string, rows: any[]): void {
     if (!rows || !rows.length) return;
     const headers = Object.keys(rows[0]);
-    const csv = [
-      headers.join(','),
-      ...rows.map((r) => headers.map((h) => JSON.stringify(r[h] ?? '')).join(',')),
+    const sanitize = (v: any) => {
+      if (v === null || v === undefined) return '';
+      return String(v).replace(/\t/g, ' ').replace(/\n/g, ' ');
+    };
+    const content = [
+      headers.join('\t'),
+      ...rows.map((r) => headers.map((h) => sanitize((r as any)[h])).join('\t')),
     ].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob([content], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${name}.csv`;
+    a.download = `${name}.xls`;
     a.click();
     URL.revokeObjectURL(url);
   }
