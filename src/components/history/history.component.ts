@@ -1,7 +1,7 @@
 
 
 
-import { Component, ChangeDetectionStrategy, signal, OnInit, AfterViewInit, ElementRef, ViewChild, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, OnInit, ElementRef, ViewChild, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 
@@ -248,8 +248,11 @@ declare var Chart: any;
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class HistoryComponent implements OnInit, AfterViewInit {
-  @ViewChild('historyChart') chartCanvas!: ElementRef<HTMLCanvasElement>;
+export class HistoryComponent implements OnInit {
+  @ViewChild('historyChart') set historyChartRef(value: ElementRef<HTMLCanvasElement> | undefined) {
+    this.chartCanvas = value;
+    this.tryCreateChart();
+  }
 
   runs = signal<AnaliseRun[]>([]);
   cliente = signal<Cliente | null>(null);
@@ -260,9 +263,9 @@ export class HistoryComponent implements OnInit, AfterViewInit {
   natashaReport = signal<string | null>(null);
   selectedRunId = signal<string | null>(null);
   natashaCache = signal<Record<string, string>>({});
-  isViewReady = signal(false);
   selectedRun = signal<AnaliseRun | null>(null);
   private chart: any;
+  private chartCanvas?: ElementRef<HTMLCanvasElement>;
 
   constructor(
     private route: ActivatedRoute,
@@ -270,10 +273,9 @@ export class HistoryComponent implements OnInit, AfterViewInit {
     private assistant: AssistantService
   ) {
     effect(() => {
-      // This effect runs when runs() or isViewReady() changes.
-      // It ensures the chart is created only when both data and the canvas are ready.
-      if (this.isViewReady() && this.runs().length > 0) {
-        this.createChart();
+      // This effect runs when runs() changes to keep the chart in sync with data.
+      if (this.runs().length > 0) {
+        this.tryCreateChart();
       }
     });
   }
@@ -287,11 +289,6 @@ export class HistoryComponent implements OnInit, AfterViewInit {
       this.error.set('ID do cliente não encontrado.');
       this.isLoading.set(false);
     }
-  }
-
-  ngAfterViewInit(): void {
-    // The view is now initialized, and the canvas element is available.
-    this.isViewReady.set(true);
   }
 
   async loadHistory(clientId: string): Promise<void> {
@@ -314,7 +311,7 @@ export class HistoryComponent implements OnInit, AfterViewInit {
         if (r.natasha_report) cache[r.id] = r.natasha_report;
       });
       this.natashaCache.set(cache);
-      // The chart will be created by the effect when this signal is set.
+      // The chart will be created when the canvas is available.
     } catch (e: any) {
       this.error.set(e.message || 'Erro ao buscar o histórico.');
     } finally {
@@ -352,6 +349,11 @@ export class HistoryComponent implements OnInit, AfterViewInit {
         },
       },
     });
+  }
+
+  private tryCreateChart(): void {
+    if (!this.chartCanvas || !this.runs().length) return;
+    this.createChart();
   }
 
   async loadCliente(id: string): Promise<void> {
