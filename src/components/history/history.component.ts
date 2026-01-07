@@ -5,6 +5,7 @@ import { Component, ChangeDetectionStrategy, signal, OnInit, ElementRef, ViewChi
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 
+import { environment } from '../../environments/environment';
 import { SupaService } from '../../services/supa.service';
 import { AnaliseRun } from '../../models/supabase.model';
 import { AssistantService, FarmaciaContext } from '../../services/assistant.service';
@@ -63,7 +64,7 @@ declare var Chart: any;
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Excesso (R$)</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Dias de Estoque</th>
               <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Análise</th>
-              <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Análise Natasha</th>
+              <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">{{ reportLabel }}</th>
             </tr>
           </thead>
           <tbody class="bg-white divide-y divide-slate-200">
@@ -89,7 +90,7 @@ declare var Chart: any;
                   >
                     @if(isGenerating() && selectedRunId() === run.id){Gerando...}
                     @else if (natashaCache()[run.id]) {Ver relatório}
-                    @else {Análise Natasha}
+                    @else { {{ reportLabel }} }
                   </button>
                 </td>
               </tr>
@@ -101,7 +102,7 @@ declare var Chart: any;
       @if(natashaReport()){
         <div class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
           <div class="flex items-center justify-between mb-3">
-            <h3 class="text-lg font-semibold text-slate-800">Relatório Natasha</h3>
+            <h3 class="text-lg font-semibold text-slate-800">{{ reportLabel }}</h3>
             <div class="space-x-2">
               <button class="px-3 py-1 bg-white border border-slate-300 rounded-md text-sm hover:bg-slate-100"
                       (click)="exportarPDF()">
@@ -116,7 +117,7 @@ declare var Chart: any;
 
       @if(genError()){
         <div class="mt-4 p-3 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-r-lg">
-          <p class="font-semibold">Erro na análise Natasha</p>
+          <p class="font-semibold">Erro no {{ reportLabel }}</p>
           <p>{{ genError() }}</p>
         </div>
       }
@@ -264,6 +265,8 @@ export class HistoryComponent implements OnInit {
   selectedRunId = signal<string | null>(null);
   natashaCache = signal<Record<string, string>>({});
   selectedRun = signal<AnaliseRun | null>(null);
+  readonly reportLabel = 'Relatório Farma Brasil';
+  readonly reportLogoUrl = environment.REPORT_LOGO_URL;
   private chart: any;
   private chartCanvas?: ElementRef<HTMLCanvasElement>;
 
@@ -397,7 +400,7 @@ export class HistoryComponent implements OnInit {
         this.isGenerating.set(false);
       },
       error: (err) => {
-        this.genError.set(err?.message || 'Erro ao gerar análise Natasha.');
+        this.genError.set(err?.message || `Erro ao gerar ${this.reportLabel}.`);
         this.isGenerating.set(false);
       },
     });
@@ -453,21 +456,35 @@ export class HistoryComponent implements OnInit {
     const report = this.natashaReport();
     if (!report) return;
     const titulo = this.cliente()?.nome_fantasia ?? 'Relatório';
+    const reportLabel = this.reportLabel;
+    const logoUrl = this.reportLogoUrl
+      ? this.reportLogoUrl.startsWith('/')
+        ? `${window.location.origin}${this.reportLogoUrl}`
+        : this.reportLogoUrl
+      : '';
+    const headerHtml = `
+      <div class="report-header">
+        ${logoUrl ? `<img src="${logoUrl}" alt="${reportLabel}" class="report-logo" />` : ''}
+        <h1>${titulo} — ${reportLabel}</h1>
+      </div>
+    `;
     const win = window.open('', '_blank', 'width=900,height=1200');
     if (!win) return;
     const style = `
       <style>
         body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; line-height: 1.6; color: #1f2937; }
-        h1 { font-size: 22px; margin-bottom: 12px; font-weight: 700; }
+        h1 { font-size: 22px; margin: 0; font-weight: 700; }
         p { text-align: justify; }
         .topic { font-weight: 700; margin-top: 12px; margin-bottom: 4px; }
+        .report-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+        .report-logo { height: 56px; max-width: 220px; object-fit: contain; }
       </style>
     `;
     const html = `
       <html>
         <head>${style}</head>
         <body>
-          <h1>${titulo} — Relatório Natasha</h1>
+          ${headerHtml}
           <pre style="white-space: pre-wrap; text-align: justify;">${report}</pre>
         </body>
       </html>

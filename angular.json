@@ -21,6 +21,10 @@
             "tsConfig": "tsconfig.json",
             "styles": [
               "index.css"
+            ],
+            "assets": [
+              "favicon.ico",
+              "assets"
             ]
           },
           "configurations": {
