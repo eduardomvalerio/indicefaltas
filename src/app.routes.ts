@@ -7,6 +7,7 @@ import { AnalysisRunnerComponent } from './components/analysis-runner/analysis-r
 import { HistoryComponent } from './components/history/history.component';
 import { SettingsComponent } from './components/settings/settings.component';
 import { UserManagementComponent } from './components/user-management/user-management.component';
+import { AdminAnalyticsComponent } from './components/admin-analytics/admin-analytics.component';
 import { AdminGuard } from './guards/admin.guard';
 
 export const APP_ROUTES: Routes = [
@@ -34,6 +35,11 @@ export const APP_ROUTES: Routes = [
         path: 'settings/users',
         canActivate: [AdminGuard],
         component: UserManagementComponent,
+      },
+      {
+        path: 'settings/analytics',
+        canActivate: [AdminGuard],
+        component: AdminAnalyticsComponent,
       },
       { path: '', redirectTo: '/clients', pathMatch: 'full' },
     ],

@@ -43,6 +43,7 @@ import { filter } from 'rxjs/operators';
 
             @if (isAdmin()) {
               <div class="flex items-center space-x-3">
+                <a class="text-sm text-sky-600 hover:underline font-medium" routerLink="/settings/analytics">Painel</a>
                 <a class="text-sm text-sky-600 hover:underline font-medium" routerLink="/settings">Configurações</a>
                 <a class="text-sm text-sky-600 hover:underline font-medium" routerLink="/settings/users">Usuários</a>
               </div>
