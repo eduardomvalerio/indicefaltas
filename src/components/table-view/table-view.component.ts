@@ -50,7 +50,7 @@ type ViewType = 'all' | 'stockout' | 'stagnant';
   <div class="overflow-x-auto">
     @if(paginatedData().length > 0) {
       <table class="min-w-full divide-y divide-slate-200">
-        <thead class="bg-slate-50">
+        <thead class="bg-slate-50 sticky top-0 z-10">
           <tr>
             <th scope="col" class="text-xs font-medium text-slate-500 uppercase tracking-wider">
                <button (click)="setSort('descricaoConsolidada')" class="px-6 py-3 w-full group inline-flex items-center justify-start">
@@ -74,6 +74,15 @@ type ViewType = 'all' | 'stockout' | 'stagnant';
                <button (click)="setSort('quantidadeVendida90d')" class="px-6 py-3 w-full group inline-flex items-center justify-end">
                 <span>Qtd. Vend. (90d)</span>
                 <span class="ml-2 flex-none rounded text-slate-500" [class.invisible]="sortColumn() !== 'quantidadeVendida90d'" [class.group-hover:visible]="sortColumn() !== 'quantidadeVendida90d'">
+                  @if (sortDirection() === 'desc') { <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg> }
+                  @else { <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg> }
+                </span>
+              </button>
+            </th>
+            <th scope="col" class="text-xs font-medium text-slate-500 uppercase tracking-wider">
+               <button (click)="setSort('valorVendaLiquidaTotal')" class="px-6 py-3 w-full group inline-flex items-center justify-end">
+                <span>Impacto (R$)</span>
+                <span class="ml-2 flex-none rounded text-slate-500" [class.invisible]="sortColumn() !== 'valorVendaLiquidaTotal'" [class.group-hover:visible]="sortColumn() !== 'valorVendaLiquidaTotal'">
                   @if (sortDirection() === 'desc') { <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" /></svg> }
                   @else { <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" /></svg> }
                 </span>
@@ -121,7 +130,7 @@ type ViewType = 'all' | 'stockout' | 'stagnant';
         </thead>
         <tbody class="bg-white divide-y divide-slate-200">
           @for (item of paginatedData(); track item.chave_merge) {
-            <tr>
+            <tr class="odd:bg-white even:bg-slate-50/60 hover:bg-slate-50">
               <td class="px-6 py-4 whitespace-nowrap">
                 <div class="text-sm font-medium text-slate-900">{{ item.descricaoConsolidada }}</div>
                 @if (item.codigoInterno) {
@@ -130,6 +139,7 @@ type ViewType = 'all' | 'stockout' | 'stagnant';
               </td>
               <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-500">{{ item.EAN_consolidado }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold" [class]="viewType() === 'stockout' ? 'text-red-600' : 'text-slate-900'">{{ item.quantidadeVendida90d }}</td>
+              <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold text-amber-700">{{ formatCurrency(item.valorVendaLiquidaTotal) }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-semibold" [class]="item.estoqueAtualConsolidado === 0 ? 'text-red-600' : (viewType() === 'stagnant' ? 'text-amber-600' : 'text-slate-900')">{{ item.estoqueAtualConsolidado }}</td>
               <td class="px-6 py-4 whitespace-nowrap text-center text-sm">
                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full" [class]="curvaBadgeClass(item.Curva_ABC)">

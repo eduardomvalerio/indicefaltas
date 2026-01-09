@@ -19,7 +19,42 @@ import { SummaryData, CurvaResumo } from '../../models/product.model';
     </p>
   </div>
 
-  <!-- BLOCO 1 – Indicadores principais -->
+  <!-- BLOCO 1 – Indicadores prioritários -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-red-100">
+      <p class="text-xs font-medium text-red-700 uppercase">ÍNDICE DE FALTAS (R$)</p>
+      <p class="mt-2 text-3xl font-bold text-red-700">
+        {{ (summaryData()?.indiceFaltas ?? 0) / 100 | percent:'1.2-2' }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">% do faturamento em itens com estoque &le; 0.</p>
+    </div>
+
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-amber-100">
+      <p class="text-xs font-medium text-amber-700 uppercase">EXCESSO (R$)</p>
+      <p class="mt-2 text-3xl font-bold text-amber-800">
+        {{ summaryData() ? formatCurrency(summaryData()!.excessoValorTotal) : formatCurrency(0) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Capital imobilizado acima do regulador.</p>
+    </div>
+
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-blue-100">
+      <p class="text-xs font-medium text-blue-700 uppercase">DIAS DE ESTOQUE (GERAL)</p>
+      <p class="mt-2 text-3xl font-bold text-blue-700">
+        {{ summaryData()?.diasEstoqueMedioGeral | number:'1.0-0' }} dias
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Cobertura média dos itens com venda.</p>
+    </div>
+
+    <div class="bg-white p-5 rounded-lg shadow-sm border border-emerald-100">
+      <p class="text-xs font-medium text-emerald-700 uppercase">LUCRO BRUTO (90D)</p>
+      <p class="mt-2 text-3xl font-bold text-emerald-700">
+        {{ summaryData() ? formatCurrency(summaryData()!.lucroBrutoTrimestre) : formatCurrency(0) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Margem: {{ (summaryData()?.margemBrutaPercent ?? 0) | percent:'1.1-1' }}</p>
+    </div>
+  </div>
+
+  <!-- BLOCO 2 – Indicadores operacionais -->
   <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
     <div class="bg-white p-4 rounded-lg shadow-sm">
       <p class="text-xs font-medium text-slate-500 uppercase">TOTAL DE SKUS</p>
@@ -34,25 +69,17 @@ import { SummaryData, CurvaResumo } from '../../models/product.model';
     <div class="bg-white p-4 rounded-lg shadow-sm border border-red-100">
       <p class="text-xs font-medium text-red-700 uppercase">SKUS EM FALTA</p>
       <p class="mt-2 text-2xl font-bold text-red-700">{{ summaryData()?.skusEmFalta | number:'1.0-0' }}</p>
-      <p class="mt-1 text-[11px] text-red-600">Ruptura considerando estoque &le; 0 e houve venda no período.</p>
+      <p class="mt-1 text-[11px] text-red-600">Ruptura com venda no período.</p>
     </div>
 
-    <div class="bg-white p-4 rounded-lg shadow-sm border border-red-100">
-      <p class="text-xs font-medium text-red-700 uppercase">ÍNDICE DE FALTAS (R$)</p>
-      <p class="mt-2 text-2xl font-bold text-red-700">
-        {{ (summaryData()?.indiceFaltas ?? 0) / 100 | percent:'1.2-2' }}
-      </p>
-      <p class="mt-1 text-[11px] text-slate-500">% do faturamento dos últimos 90 dias em itens com estoque &le; 0.</p>
-    </div>
-  </div>
-
-  <!-- BLOCO 2 – Itens parados -->
-  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
     <div class="bg-white p-4 rounded-lg shadow-sm border border-amber-100">
       <p class="text-xs font-medium text-amber-700 uppercase">SKUS PARADOS (SEM GIRO 90D)</p>
       <p class="mt-2 text-2xl font-bold text-amber-800">{{ summaryData()?.skusParados | number:'1.0-0' }}</p>
     </div>
+  </div>
 
+  <!-- BLOCO 3 – Estoque parado -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
     <div class="bg-white p-4 rounded-lg shadow-sm border border-amber-100">
       <p class="text-xs font-medium text-amber-700 uppercase">ESTOQUE PARADO (UNIDADES)</p>
       <p class="mt-2 text-2xl font-bold text-amber-800">{{ summaryData()?.estoqueParadoUnidades | number:'1.0-0' }}</p>
@@ -67,7 +94,7 @@ import { SummaryData, CurvaResumo } from '../../models/product.model';
     </div>
   </div>
 
-  <!-- BLOCO 3 – Resultado 90 dias -->
+  <!-- BLOCO 4 – Resultado 90 dias -->
   <div class="bg-white p-5 rounded-lg shadow-sm border border-slate-100">
     <h3 class="text-sm font-semibold text-slate-800 mb-3">Resultado dos últimos 90 dias</h3>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-slate-700">

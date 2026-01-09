@@ -1,4 +1,5 @@
 import { SummaryData } from './product.model';
+import { ActionPlan } from './action-plan.model';
 
 // Corresponde à tabela 'clientes'
 export interface Cliente {
@@ -25,6 +26,7 @@ export interface AnaliseRun {
   path_inventario?: string;
   summary: SummaryData;
   natasha_report?: string | null;
+  action_plan?: ActionPlan | null;
   top_faltas?: any;
   top_excessos?: any;
   top_parados?: any;

@@ -7,17 +7,20 @@ import { ActivatedRoute } from '@angular/router';
 import { FileUploaderComponent } from '../file-uploader/file-uploader.component';
 import { DashboardComponent } from '../dashboard/dashboard.component';
 import { AnalysisResult } from '../../models/product.model';
+import { ActionPlan } from '../../models/action-plan.model';
 import { PersistAnalysisService } from '../../services/persist-analysis.service';
 import { FileStorageService } from '../../services/file-storage.service';
 import { AuthService } from '../../services/auth.service';
 import { SupaService } from '../../services/supa.service';
 import { environment } from '../../environments/environment';
 import { UserContextService } from '../../services/user-context.service';
+import { ActionPlanService } from '../../services/action-plan.service';
+import { ActionPlanViewComponent } from '../action-plan-view/action-plan-view.component';
 
 @Component({
   selector: 'app-analysis-runner',
   standalone: true,
-  imports: [CommonModule, FormsModule, FileUploaderComponent, DashboardComponent],
+  imports: [CommonModule, FormsModule, FileUploaderComponent, DashboardComponent, ActionPlanViewComponent],
   template: `
 @if (!analysisResult()) {
   <div class="mb-4 bg-white p-4 rounded-md shadow-sm border border-slate-100">
@@ -62,7 +65,23 @@ import { UserContextService } from '../../services/user-context.service';
      <div class="mb-4 p-4 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-r-lg">
         <p class="font-bold">Erro ao Salvar</p>
         <p>{{ saveError() }}</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button class="px-3 py-1 text-sm rounded-md bg-white border border-red-200 text-red-700 hover:bg-red-50"
+                  (click)="startOver()">
+            Enviar planilhas
+          </button>
+          <button class="px-3 py-1 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+                  (click)="reexecutarAnalise()">
+            Reexecutar análise
+          </button>
+        </div>
       </div>
+  }
+
+  @if (actionPlan()) {
+    <div class="mb-6">
+      <app-action-plan-view [plan]="actionPlan()"></app-action-plan-view>
+    </div>
   }
 
   <app-dashboard [analysisResult]="analysisResult()!"></app-dashboard>
@@ -72,6 +91,7 @@ import { UserContextService } from '../../services/user-context.service';
 })
 export class AnalysisRunnerComponent implements OnInit {
   analysisResult = signal<AnalysisResult | null>(null);
+  actionPlan = signal<ActionPlan | null>(null);
   isSaving = signal(false);
   saveError = signal<string | null>(null);
   periodoInicio = '';
@@ -87,7 +107,8 @@ export class AnalysisRunnerComponent implements OnInit {
     private storageService: FileStorageService,
     private authService: AuthService,
     private supaService: SupaService,
-    private userContext: UserContextService
+    private userContext: UserContextService,
+    private actionPlanService: ActionPlanService
   ) {}
 
   ngOnInit(): void {
@@ -101,6 +122,9 @@ export class AnalysisRunnerComponent implements OnInit {
 
   async onAnalysisComplete(result: AnalysisResult): Promise<void> {
     this.analysisResult.set(result);
+    this.actionPlan.set(
+      this.actionPlanService.buildPlan(result.consolidated ?? [], environment.DEFAULT_LEAD_TIME_DAYS)
+    );
 
     if (environment.enableCloudSave && this.clientId && this.salesFile) {
       this.isSaving.set(true);
@@ -141,6 +165,7 @@ export class AnalysisRunnerComponent implements OnInit {
           path_vendas: pathVendas,
           path_inventario: pathInventario,
           summary: result.summary,
+          action_plan: this.actionPlan(),
           top_faltas: topFaltas,
           top_excessos: topExcessos,
           top_parados: topParados,
@@ -159,10 +184,15 @@ export class AnalysisRunnerComponent implements OnInit {
 
   startOver(): void {
     this.analysisResult.set(null);
+    this.actionPlan.set(null);
     this.salesFile = null;
     this.inventoryFile = null;
     this.periodoInicio = '';
     this.periodoFim = '';
+  }
+
+  reexecutarAnalise(): void {
+    this.startOver();
   }
 
   private computeTops(result: AnalysisResult): { topFaltas: any[]; topExcessos: any[]; topParados: any[] } {

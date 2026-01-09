@@ -17,10 +17,14 @@ const pad2 = (value: number) => String(value).padStart(2, '0');
 const formatDateInput = (date: Date) =>
   `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
+const endOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+const shiftMonth = (date: Date, offset: number) => new Date(date.getFullYear(), date.getMonth() + offset, 1);
 const toStartIso = (dateInput: string) => new Date(`${dateInput}T00:00:00`).toISOString();
 const toEndIso = (dateInput: string) => new Date(`${dateInput}T23:59:59.999`).toISOString();
 const formatDateDisplay = (dateInput: string) =>
   new Date(`${dateInput}T00:00:00`).toLocaleDateString('pt-BR');
+const formatMonthLabel = (date: Date) =>
+  date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
 @Component({
   selector: 'app-admin-analytics',
@@ -84,7 +88,7 @@ const formatDateDisplay = (dateInput: string) =>
         <p>{{ error() }}</p>
       </div>
     } @else {
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-100">
           <p class="text-xs text-slate-500 uppercase">Total de análises</p>
           <p class="text-2xl font-bold text-slate-800">{{ totalRuns() }}</p>
@@ -97,6 +101,14 @@ const formatDateDisplay = (dateInput: string) =>
           <p class="text-xs text-slate-500 uppercase">Média por empresa</p>
           <p class="text-2xl font-bold text-slate-800">{{ averageRuns() }}</p>
         </div>
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-100">
+          <p class="text-xs text-slate-500 uppercase">Mês atual vs anterior</p>
+          <p class="text-2xl font-bold text-slate-800">{{ currentMonthRuns() }}</p>
+          <p class="text-xs text-slate-500">{{ currentMonthLabel() }}</p>
+          <p class="text-xs mt-1 font-semibold" [class]="monthDeltaClass()">
+            {{ monthDeltaLabel() }}
+          </p>
+        </div>
       </div>
 
       <div class="bg-white p-6 rounded-lg shadow-lg">
@@ -105,9 +117,23 @@ const formatDateDisplay = (dateInput: string) =>
         @if (analysisByClient().length === 0) {
           <p class="text-sm text-slate-500">Nenhuma análise encontrada neste período.</p>
         } @else {
+          <div class="mb-6">
+            <h3 class="text-xs font-semibold text-slate-500 uppercase mb-3">Top empresas (volume de análises)</h3>
+            <div class="space-y-3">
+              @for (row of chartRows(); track row.clientId) {
+                <div class="flex items-center gap-3">
+                  <div class="w-40 text-xs text-slate-600 truncate">{{ row.name }}</div>
+                  <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div class="h-2 bg-sky-500 rounded-full" [style.width.%]="barWidth(row.count)"></div>
+                  </div>
+                  <div class="w-8 text-right text-xs font-semibold text-slate-700">{{ row.count }}</div>
+                </div>
+              }
+            </div>
+          </div>
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200">
-              <thead class="bg-slate-50">
+              <thead class="bg-slate-50 sticky top-0 z-10">
                 <tr>
                   <th class="px-4 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Empresa</th>
                   <th class="px-4 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Qtd. análises</th>
@@ -115,7 +141,7 @@ const formatDateDisplay = (dateInput: string) =>
               </thead>
               <tbody class="bg-white divide-y divide-slate-200">
                 @for (row of analysisByClient(); track row.clientId) {
-                  <tr>
+                  <tr class="odd:bg-white even:bg-slate-50/60">
                     <td class="px-4 py-3 text-sm text-slate-800">
                       <p class="font-semibold">{{ row.name }}</p>
                       @if (row.city || row.uf) {
@@ -143,6 +169,9 @@ export class AdminAnalyticsComponent implements OnInit {
   analysisByClient = signal<AnalysisByClient[]>([]);
   totalRuns = signal(0);
   totalClients = signal(0);
+  currentMonthRuns = signal(0);
+  previousMonthRuns = signal(0);
+  currentMonthLabel = signal(formatMonthLabel(new Date()));
 
   periodLabel = computed(() => `${formatDateDisplay(this.startDate())} — ${formatDateDisplay(this.endDate())}`);
   averageRuns = computed(() => {
@@ -150,6 +179,11 @@ export class AdminAnalyticsComponent implements OnInit {
     const companies = this.totalClients();
     if (!companies) return '0';
     return (total / companies).toFixed(1);
+  });
+  chartRows = computed(() => this.analysisByClient().slice(0, 10));
+  maxChartCount = computed(() => {
+    const max = Math.max(...this.chartRows().map((row) => row.count), 0);
+    return max > 0 ? max : 1;
   });
 
   private clientsById = new Map<string, Cliente>();
@@ -183,12 +217,17 @@ export class AdminAnalyticsComponent implements OnInit {
       const startIso = toStartIso(this.startDate());
       const endIso = toEndIso(this.endDate());
 
-      const { data, error } = await this.supaService.client
-        .from('analise_runs')
-        .select('id, cliente_id, created_at')
-        .gte('created_at', startIso)
-        .lte('created_at', endIso);
+      const [analyticsResp, currentMonthCount, previousMonthCount] = await Promise.all([
+        this.supaService.client
+          .from('analise_runs')
+          .select('id, cliente_id, created_at')
+          .gte('created_at', startIso)
+          .lte('created_at', endIso),
+        this.fetchRunCountForMonth(0),
+        this.fetchRunCountForMonth(-1),
+      ]);
 
+      const { data, error } = analyticsResp as any;
       if (error) throw error;
 
       const runs = data ?? [];
@@ -214,6 +253,9 @@ export class AdminAnalyticsComponent implements OnInit {
       this.analysisByClient.set(rows);
       this.totalRuns.set(runs.length);
       this.totalClients.set(rows.length);
+      this.currentMonthRuns.set(currentMonthCount);
+      this.previousMonthRuns.set(previousMonthCount);
+      this.currentMonthLabel.set(formatMonthLabel(new Date()));
     } catch (err: any) {
       this.error.set(err?.message || 'Erro ao carregar as análises.');
     } finally {
@@ -225,5 +267,41 @@ export class AdminAnalyticsComponent implements OnInit {
     const now = new Date();
     this.startDate.set(formatDateInput(startOfMonth(now)));
     this.endDate.set(formatDateInput(now));
+  }
+
+  barWidth(value: number): number {
+    return Math.round((value / this.maxChartCount()) * 100);
+  }
+
+  monthDeltaLabel(): string {
+    const current = this.currentMonthRuns();
+    const previous = this.previousMonthRuns();
+    const delta = current - previous;
+    const sign = delta > 0 ? '+' : '';
+    const percent = previous > 0 ? ` (${((delta / previous) * 100).toFixed(0)}%)` : '';
+    return `${sign}${delta} vs mês anterior${percent}`;
+  }
+
+  monthDeltaClass(): string {
+    const delta = this.currentMonthRuns() - this.previousMonthRuns();
+    if (delta > 0) return 'text-emerald-600';
+    if (delta < 0) return 'text-red-600';
+    return 'text-slate-500';
+  }
+
+  private async fetchRunCountForMonth(offset: number): Promise<number> {
+    const base = shiftMonth(new Date(), offset);
+    const start = startOfMonth(base);
+    const end = endOfMonth(base);
+    const { count, error } = await this.supaService.client
+      .from('analise_runs')
+      .select('id', { count: 'exact', head: true })
+      .gte('created_at', start.toISOString())
+      .lte('created_at', end.toISOString());
+    if (error) {
+      console.error('Erro ao contar análises do mês', error);
+      return 0;
+    }
+    return count ?? 0;
   }
 }

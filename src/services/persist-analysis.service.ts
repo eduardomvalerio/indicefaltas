@@ -2,6 +2,7 @@ import { Injectable } from '@angular/core';
 import { SupaService } from './supa.service';
 import { SummaryData } from '../models/product.model';
 import { AnaliseRun } from '../models/supabase.model';
+import { ActionPlan } from '../models/action-plan.model';
 
 @Injectable({ providedIn: 'root' })
 export class PersistAnalysisService {
@@ -16,6 +17,7 @@ export class PersistAnalysisService {
     top_faltas?: any;
     top_excessos?: any;
     top_parados?: any;
+    action_plan?: ActionPlan | null;
     consolidated?: any;
     faltas?: any;
     parados?: any;
@@ -34,6 +36,7 @@ export class PersistAnalysisService {
         path_vendas: params.path_vendas ?? null,
         path_inventario: params.path_inventario ?? null,
         summary: params.summary as any,
+        action_plan: params.action_plan ?? null,
         top_faltas: params.top_faltas ?? null,
         top_excessos: params.top_excessos ?? null,
         top_parados: params.top_parados ?? null,

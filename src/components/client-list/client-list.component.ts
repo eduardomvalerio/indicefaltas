@@ -35,6 +35,18 @@ import { Cliente } from '../../models/supabase.model';
     <div class="p-4 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-r-lg" role="alert">
       <p class="font-bold">Erro</p>
       <p>{{ error() }}</p>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button class="px-3 py-1 text-sm rounded-md bg-white border border-red-200 text-red-700 hover:bg-red-50"
+                (click)="loadClients()">
+          Tentar novamente
+        </button>
+        @if (isAdmin()) {
+          <a class="px-3 py-1 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+             routerLink="/settings">
+            Cadastrar cliente
+          </a>
+        }
+      </div>
     </div>
   } @else if (clients().length === 0) {
     <div class="text-center py-12 px-6 bg-white rounded-lg shadow-sm">
@@ -45,6 +57,11 @@ import { Cliente } from '../../models/supabase.model';
       <p class="mt-1 text-sm text-slate-500">
         Não há clientes cadastrados para sua organização.
       </p>
+      @if (isAdmin()) {
+        <a routerLink="/settings" class="inline-flex items-center mt-4 px-4 py-2 text-sm font-semibold text-white bg-sky-600 rounded-md hover:bg-sky-700">
+          Cadastrar cliente
+        </a>
+      }
     </div>
   } @else {
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

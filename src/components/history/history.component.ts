@@ -1,15 +1,18 @@
 
 
 
-import { Component, ChangeDetectionStrategy, signal, OnInit, ElementRef, ViewChild, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, OnInit, ElementRef, ViewChild, effect, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, RouterModule } from '@angular/router';
 
 import { environment } from '../../environments/environment';
 import { SupaService } from '../../services/supa.service';
 import { AnaliseRun } from '../../models/supabase.model';
 import { AssistantService, FarmaciaContext } from '../../services/assistant.service';
 import { Cliente } from '../../models/supabase.model';
+import { ActionPlan } from '../../models/action-plan.model';
+import { ActionPlanService } from '../../services/action-plan.service';
+import { ActionPlanViewComponent } from '../action-plan-view/action-plan-view.component';
 
 // Declara a variável global Chart para que o TypeScript a reconheça.
 // A biblioteca é carregada via <script> no index.html.
@@ -19,7 +22,7 @@ declare var Chart: any;
 @Component({
   selector: 'app-history',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, RouterModule, ActionPlanViewComponent],
   template: `
 @if (isLoading()) {
   <div class="text-center p-8">
@@ -30,6 +33,18 @@ declare var Chart: any;
   <div class="p-4 bg-red-50 border-l-4 border-red-400 text-red-700 rounded-r-lg" role="alert">
     <p class="font-bold">Erro</p>
     <p>{{ error() }}</p>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <button class="px-3 py-1 text-sm rounded-md bg-white border border-red-200 text-red-700 hover:bg-red-50"
+              (click)="reloadHistory()">
+        Tentar novamente
+      </button>
+      @if (clientId) {
+        <a class="px-3 py-1 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+           [routerLink]="['/clients', clientId, 'new-analysis']">
+          Reexecutar análise
+        </a>
+      }
+    </div>
   </div>
 } @else if (runs().length === 0) {
   <div class="text-center py-12 px-6 bg-white rounded-lg shadow-sm">
@@ -40,12 +55,43 @@ declare var Chart: any;
     <p class="mt-1 text-sm text-slate-500">
       Nenhuma análise foi executada para este cliente ainda.
     </p>
+    @if (clientId) {
+      <a class="inline-flex items-center mt-4 px-4 py-2 text-sm font-semibold text-white bg-sky-600 rounded-md hover:bg-sky-700"
+         [routerLink]="['/clients', clientId, 'new-analysis']">
+        Enviar planilhas
+      </a>
+    }
   </div>
 } @else {
   <div class="space-y-8">
     <!-- Gráfico -->
     <div class="bg-white p-6 rounded-lg shadow-lg">
-      <h2 class="text-xl font-bold text-slate-800 mb-4">Evolução dos Indicadores</h2>
+      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+        <h2 class="text-xl font-bold text-slate-800">Evolução dos Indicadores</h2>
+        <div class="flex items-center gap-2">
+          <button
+            class="px-3 py-1.5 text-xs font-semibold rounded-full border"
+            [class]="chartPeriodDays() === 30 ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+            (click)="setChartPeriod(30)"
+          >
+            Últimos 30 dias
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-semibold rounded-full border"
+            [class]="chartPeriodDays() === 90 ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+            (click)="setChartPeriod(90)"
+          >
+            Últimos 90 dias
+          </button>
+          <button
+            class="px-3 py-1.5 text-xs font-semibold rounded-full border"
+            [class]="chartPeriodDays() === 180 ? 'bg-sky-600 text-white border-sky-600' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'"
+            (click)="setChartPeriod(180)"
+          >
+            Últimos 180 dias
+          </button>
+        </div>
+      </div>
       <div class="relative h-96">
         <canvas #historyChart></canvas>
       </div>
@@ -56,11 +102,12 @@ declare var Chart: any;
       <h2 class="text-xl font-bold text-slate-800 mb-4">Execuções da Análise</h2>
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-slate-200">
-          <thead class="bg-slate-50">
+          <thead class="bg-slate-50 sticky top-0 z-10">
             <tr>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Data</th>
               <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Período analisado</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">% Faltas (Geral)</th>
+              <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Impacto (R$)</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Excesso (R$)</th>
               <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Dias de Estoque</th>
               <th scope="col" class="px-6 py-3 text-center text-xs font-medium text-slate-500 uppercase tracking-wider">Análise</th>
@@ -69,10 +116,11 @@ declare var Chart: any;
           </thead>
           <tbody class="bg-white divide-y divide-slate-200">
             @for(run of runs(); track run.id){
-              <tr>
+              <tr class="odd:bg-white even:bg-slate-50/60">
                 <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900">{{ run.created_at | date:'dd/MM/yyyy HH:mm' }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-700">{{ formatPeriodo(run) }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-semibold">{{ run.summary.indiceFaltas | number:'1.2-2' }}%</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-red-600 font-semibold">{{ impactoRun(run) | currency:'BRL':'symbol':'1.2-2':'pt-BR' }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-amber-600">{{ run.summary.excessoValorTotal | number:'1.2-2':'pt-BR' }}</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-right text-blue-600">{{ run.summary.diasEstoqueMedioGeral | number:'1.0-0' }} dias</td>
                 <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
@@ -123,11 +171,15 @@ declare var Chart: any;
       }
 
       @if(selectedRun()){
-        <div class="mt-8 bg-white p-6 rounded-lg shadow-lg border border-slate-200">
-          <h3 class="text-xl font-semibold text-slate-800 mb-4">Análise detalhada</h3>
-          <p class="text-sm text-slate-600 mb-4">
-            Cliente: {{ cliente()?.nome_fantasia }} — Período: {{ formatPeriodo(selectedRun()!) }}
-          </p>
+        <div class="mt-8 space-y-6">
+          @if (selectedActionPlan()) {
+            <app-action-plan-view [plan]="selectedActionPlan()"></app-action-plan-view>
+          }
+          <div class="bg-white p-6 rounded-lg shadow-lg border border-slate-200">
+            <h3 class="text-xl font-semibold text-slate-800 mb-4">Análise detalhada</h3>
+            <p class="text-sm text-slate-600 mb-4">
+              Cliente: {{ cliente()?.nome_fantasia }} — Período: {{ formatPeriodo(selectedRun()!) }}
+            </p>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             <div class="p-4 rounded-lg bg-slate-50 border border-slate-200">
               <p class="text-xs text-slate-500 uppercase">Índice de Faltas</p>
@@ -162,7 +214,7 @@ declare var Chart: any;
 
           <div class="overflow-x-auto">
             <table class="min-w-full divide-y divide-slate-200">
-              <thead class="bg-slate-50">
+              <thead class="bg-slate-50 sticky top-0 z-10">
                 <tr>
                   <th class="px-4 py-2 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Curva</th>
                   <th class="px-4 py-2 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">SKUs</th>
@@ -173,7 +225,7 @@ declare var Chart: any;
               </thead>
               <tbody class="bg-white divide-y divide-slate-200">
                 @for(c of selectedRun()!.summary.curvas; track c.curva){
-                  <tr>
+                  <tr class="odd:bg-white even:bg-slate-50/60">
                     <td class="px-4 py-2 text-sm font-semibold text-slate-800">{{ c.curva }}</td>
                     <td class="px-4 py-2 text-sm text-right text-slate-700">{{ c.skus | number:'1.0-0' }}</td>
                     <td class="px-4 py-2 text-sm text-right text-red-600">{{ c.faltaPercent | number:'1.1-1' }}%</td>
@@ -241,6 +293,7 @@ declare var Chart: any;
               Excluir análise
             </button>
           </div>
+          </div>
         </div>
       }
     </div>
@@ -255,6 +308,7 @@ export class HistoryComponent implements OnInit {
     this.tryCreateChart();
   }
 
+  clientId: string | null = null;
   runs = signal<AnaliseRun[]>([]);
   cliente = signal<Cliente | null>(null);
   isLoading = signal(true);
@@ -265,18 +319,24 @@ export class HistoryComponent implements OnInit {
   selectedRunId = signal<string | null>(null);
   natashaCache = signal<Record<string, string>>({});
   selectedRun = signal<AnaliseRun | null>(null);
+  selectedActionPlan = signal<ActionPlan | null>(null);
+  chartPeriodDays = signal(90);
+  chartRunCount = computed(() => this.getRunsForChart().length);
   readonly reportLabel = 'Relatório Farma Brasil';
   readonly reportLogoUrl = environment.REPORT_LOGO_URL;
   private chart: any;
   private chartCanvas?: ElementRef<HTMLCanvasElement>;
+  private readonly leadTimeDays = environment.DEFAULT_LEAD_TIME_DAYS;
 
   constructor(
     private route: ActivatedRoute,
     private supaService: SupaService,
-    private assistant: AssistantService
+    private assistant: AssistantService,
+    private actionPlanService: ActionPlanService
   ) {
     effect(() => {
       // This effect runs when runs() changes to keep the chart in sync with data.
+      this.chartPeriodDays();
       if (this.runs().length > 0) {
         this.tryCreateChart();
       }
@@ -286,6 +346,7 @@ export class HistoryComponent implements OnInit {
   ngOnInit(): void {
     const clientId = this.route.parent?.snapshot.paramMap.get('clientId');
     if (clientId) {
+      this.clientId = clientId;
       this.loadHistory(clientId);
       this.loadCliente(clientId);
     } else {
@@ -322,10 +383,22 @@ export class HistoryComponent implements OnInit {
     }
   }
 
-  createChart(): void {
-    if (!this.chartCanvas || !this.runs().length) return;
+  reloadHistory(): void {
+    if (this.clientId) {
+      this.loadHistory(this.clientId);
+    }
+  }
 
-    const chartData = [...this.runs()].reverse();
+  createChart(): void {
+    if (!this.chartCanvas) return;
+
+    const filteredRuns = this.getRunsForChart();
+    if (!filteredRuns.length) {
+      if (this.chart) this.chart.destroy();
+      return;
+    }
+
+    const chartData = [...filteredRuns].reverse();
     const labels = chartData.map((run) => new Date(run.created_at).toLocaleDateString('pt-BR'));
 
     const datasets = [
@@ -339,24 +412,79 @@ export class HistoryComponent implements OnInit {
 
     if (this.chart) this.chart.destroy();
 
+    const formatCurrency = (value: number) =>
+      value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
     this.chart = new Chart(ctx, {
       type: 'line',
       data: { labels, datasets },
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { position: 'bottom' },
+          tooltip: {
+            callbacks: {
+              title: (items: any[]) => (items.length ? `Data: ${items[0].label}` : ''),
+              label: (context: any) => {
+                const label = context.dataset?.label ?? '';
+                const value = typeof context.parsed?.y === 'number' ? context.parsed.y : 0;
+                if (label.includes('% Faltas')) {
+                  return `${label}: ${value.toFixed(2)}%`;
+                }
+                if (label.includes('Dias')) {
+                  return `${label}: ${value.toFixed(0)} dias`;
+                }
+                if (label.includes('Excesso')) {
+                  return `${label}: ${formatCurrency(value)}`;
+                }
+                return `${label}: ${value}`;
+              },
+            },
+          },
+        },
         scales: {
-          yPercentage: { type: 'linear', position: 'left' },
-          yDays: { type: 'linear', position: 'right', grid: { drawOnChartArea: false } },
-          yCurrency: { type: 'linear', position: 'right', grid: { drawOnChartArea: false } },
+          yPercentage: {
+            type: 'linear',
+            position: 'left',
+            ticks: { callback: (value: any) => `${value}%` },
+          },
+          yDays: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { callback: (value: any) => `${value}d` },
+          },
+          yCurrency: {
+            type: 'linear',
+            position: 'right',
+            grid: { drawOnChartArea: false },
+            ticks: { callback: (value: any) => formatCurrency(Number(value)) },
+          },
         },
       },
     });
   }
 
   private tryCreateChart(): void {
-    if (!this.chartCanvas || !this.runs().length) return;
+    if (!this.chartCanvas) return;
+    if (!this.chartRunCount()) {
+      if (this.chart) this.chart.destroy();
+      return;
+    }
     this.createChart();
+  }
+
+  private getRunsForChart(): AnaliseRun[] {
+    const period = this.chartPeriodDays();
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - period);
+    return this.runs().filter((run) => new Date(run.created_at) >= cutoff);
+  }
+
+  setChartPeriod(days: number): void {
+    this.chartPeriodDays.set(days);
   }
 
   async loadCliente(id: string): Promise<void> {
@@ -413,6 +541,10 @@ export class HistoryComponent implements OnInit {
 
   verAnalise(run: AnaliseRun): void {
     this.selectedRun.set(run);
+    const plan =
+      (run.action_plan as ActionPlan | null) ??
+      (Array.isArray(run.consolidated) ? this.actionPlanService.buildPlan(run.consolidated, this.leadTimeDays) : null);
+    this.selectedActionPlan.set(plan);
   }
 
   getFaltas(run: AnaliseRun): any[] {
@@ -574,6 +706,12 @@ export class HistoryComponent implements OnInit {
     return `últimos ${run.periodo_dias} dias`;
   }
 
+  impactoRun(run: AnaliseRun): number {
+    const venda = run.summary?.vendaTrimestre ?? 0;
+    const indice = run.summary?.indiceFaltas ?? 0;
+    return venda * (indice / 100);
+  }
+
   private async salvarNatasha(runId: string, report: string): Promise<void> {
     try {
       const { error } = await this.supaService.client
@@ -602,6 +740,7 @@ export class HistoryComponent implements OnInit {
         this.runs.set(this.runs().filter((r) => r.id !== run.id));
         if (this.selectedRunId() === run.id) {
           this.selectedRun.set(null);
+          this.selectedActionPlan.set(null);
           this.natashaReport.set(null);
         }
       });
