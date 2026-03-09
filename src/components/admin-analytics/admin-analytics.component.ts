@@ -2,7 +2,7 @@ import { Component, ChangeDetectionStrategy, OnInit, computed, signal } from '@a
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
-import { SupaService } from '../../services/supa.service';
+import { ApiService } from '../../services/api.service';
 import { Cliente } from '../../models/supabase.model';
 
 interface AnalysisByClient {
@@ -189,7 +189,7 @@ export class AdminAnalyticsComponent implements OnInit {
   private clientsById = new Map<string, Cliente>();
   private clientsLoaded = false;
 
-  constructor(private supaService: SupaService) {}
+  constructor(private api: ApiService) { }
 
   async ngOnInit(): Promise<void> {
     await this.loadClients();
@@ -198,15 +198,14 @@ export class AdminAnalyticsComponent implements OnInit {
 
   async loadClients(): Promise<void> {
     if (this.clientsLoaded) return;
-    const { data, error } = await this.supaService.client
-      .from('clientes')
-      .select('id, nome_fantasia, cidade, uf')
-      .order('nome_fantasia', { ascending: true });
-    if (!error && data) {
-      data.forEach((row) => {
-        this.clientsById.set(row.id, row as Cliente);
+    try {
+      const data = await this.api.get<any[]>('/clientes');
+      (data || []).forEach((row: any) => {
+        this.clientsById.set(row._id || row.id, { ...row, id: row._id || row.id } as Cliente);
       });
       this.clientsLoaded = true;
+    } catch (err) {
+      console.error('Erro ao carregar clientes:', err);
     }
   }
 
@@ -217,20 +216,30 @@ export class AdminAnalyticsComponent implements OnInit {
       const startIso = toStartIso(this.startDate());
       const endIso = toEndIso(this.endDate());
 
-      const [analyticsResp, currentMonthCount, previousMonthCount] = await Promise.all([
-        this.supaService.client
-          .from('analise_runs')
-          .select('id, cliente_id, created_at')
-          .gte('created_at', startIso)
-          .lte('created_at', endIso),
-        this.fetchRunCountForMonth(0),
-        this.fetchRunCountForMonth(-1),
-      ]);
+      // Fetch all runs from the API (lightweight, no heavy JSONB fields)
+      const allRuns = await this.api.get<any[]>('/analise-runs');
 
-      const { data, error } = analyticsResp as any;
-      if (error) throw error;
+      // Filter by date range client-side
+      const runs = (allRuns || []).filter((r: any) => {
+        const createdAt = new Date(r.created_at).toISOString();
+        return createdAt >= startIso && createdAt <= endIso;
+      });
 
-      const runs = data ?? [];
+      // Compute monthly counts client-side
+      const now = new Date();
+      const currentMonthStart = startOfMonth(now);
+      const currentMonthEnd = endOfMonth(now);
+      const prevMonthStart = startOfMonth(shiftMonth(now, -1));
+      const prevMonthEnd = endOfMonth(shiftMonth(now, -1));
+
+      let currentMonthCount = 0;
+      let previousMonthCount = 0;
+      (allRuns || []).forEach((r: any) => {
+        const d = new Date(r.created_at);
+        if (d >= currentMonthStart && d <= currentMonthEnd) currentMonthCount++;
+        if (d >= prevMonthStart && d <= prevMonthEnd) previousMonthCount++;
+      });
+
       const counts = new Map<string, number>();
       runs.forEach((run: any) => {
         const clientId = run.cliente_id as string;
@@ -289,19 +298,4 @@ export class AdminAnalyticsComponent implements OnInit {
     return 'text-slate-500';
   }
 
-  private async fetchRunCountForMonth(offset: number): Promise<number> {
-    const base = shiftMonth(new Date(), offset);
-    const start = startOfMonth(base);
-    const end = endOfMonth(base);
-    const { count, error } = await this.supaService.client
-      .from('analise_runs')
-      .select('id', { count: 'exact', head: true })
-      .gte('created_at', start.toISOString())
-      .lte('created_at', end.toISOString());
-    if (error) {
-      console.error('Erro ao contar análises do mês', error);
-      return 0;
-    }
-    return count ?? 0;
-  }
 }

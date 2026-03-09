@@ -5,7 +5,7 @@ import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { User } from '@supabase/supabase-js';
 
 import { AuthService } from './services/auth.service';
-import { SupaService } from './services/supa.service';
+import { ApiService } from './services/api.service';
 import { UserContextService } from './services/user-context.service';
 import { Cliente } from './models/supabase.model';
 import { filter } from 'rxjs/operators';
@@ -85,7 +85,7 @@ export class AppComponent {
   constructor(
     private authService: AuthService,
     private router: Router,
-    private supaService: SupaService,
+    private api: ApiService,
     private userContext: UserContextService
   ) {
     this.currentUser = this.authService.currentUser;
@@ -116,17 +116,22 @@ export class AppComponent {
   }
 
   async loadClients(): Promise<void> {
-    const { data, error } = await this.supaService.client
-      .from('clientes')
-      .select('id, nome_fantasia, cidade, uf')
-      .order('nome_fantasia', { ascending: true });
-    if (!error && data) {
-      this.clients.set(data as Cliente[]);
+    try {
+      const data = await this.api.get<any[]>('/clientes');
+      const normalized = (data || [])
+        .map((row) => ({ ...row, id: row?.id || row?._id }))
+        .filter((row) => !!row.id) as Cliente[];
+      this.clients.set(normalized);
+      if (this.selectedClientId() && !normalized.some((c) => c.id === this.selectedClientId())) {
+        this.selectedClientId.set(null);
+      }
+    } catch (err) {
+      console.error('Erro ao carregar clientes:', err);
     }
   }
 
   onSelectClient(clientId: string | null): void {
-    if (!clientId) return;
+    if (!clientId || clientId === 'undefined' || clientId === 'null') return;
     this.selectedClientId.set(clientId);
     this.router.navigate(['/clients', clientId]);
   }

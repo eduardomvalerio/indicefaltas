@@ -98,6 +98,11 @@ export class AnalysisService {
     return null;
   }
 
+  private getSalesInternalCode(row: SalesRecord): string | number | undefined {
+    // Aceita as duas variações vistas nas planilhas reais.
+    return row['Código interno'] ?? (row as any)['Código Interno'];
+  }
+
   private toNumber(value: any): number {
     if (value === null || value === undefined || value === '') return 0;
     if (typeof value === 'string') {
@@ -118,7 +123,8 @@ export class AnalysisService {
 
     // --- VENDAS
     salesData.forEach((row) => {
-      const key = this.createMergeKey(row.EAN, row['Código interno']);
+      const internalCode = this.getSalesInternalCode(row);
+      const key = this.createMergeKey(row.EAN, internalCode);
       if (!key) return;
 
       const existente = consolidatedMap.get(key) || {};
@@ -134,7 +140,7 @@ export class AnalysisService {
         ...existente,
         chave_merge: key,
         EAN_consolidado: this.normalizeKey(row.EAN),
-        codigoInterno: this.normalizeKey(row['Código interno']) || existente.codigoInterno,
+        codigoInterno: this.normalizeKey(internalCode) || existente.codigoInterno,
         descricaoConsolidada: row.Descrição || existente.descricaoConsolidada || 'N/A',
         quantidadeVendida90d: (existente.quantidadeVendida90d ?? 0) + qtdVendida,
         valorVendaLiquidaTotal: (existente.valorVendaLiquidaTotal ?? 0) + vendaLiquida,

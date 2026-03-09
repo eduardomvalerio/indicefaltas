@@ -12,6 +12,7 @@ export interface SalesRecord {
   'Valor de venda líquida total'?: number;
   'Custo unitário'?: number;
   'Código interno'?: string | number;
+  'Código Interno'?: string | number;
 }
 
 /** ------------------------------

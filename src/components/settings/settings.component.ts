@@ -2,7 +2,7 @@ import { Component, ChangeDetectionStrategy, OnInit, signal } from '@angular/cor
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterModule, Router } from '@angular/router';
-import { SupaService } from '../../services/supa.service';
+import { ApiService } from '../../services/api.service';
 import { UserContextService } from '../../services/user-context.service';
 
 @Component({
@@ -88,34 +88,15 @@ export class SettingsComponent implements OnInit {
   private orgId: string | null = null;
 
   constructor(
-    private supaService: SupaService,
+    private api: ApiService,
     private userContext: UserContextService,
     private router: Router
-  ) {}
+  ) { }
 
   async ngOnInit(): Promise<void> {
     const membership = await this.userContext.ensureMembership();
     this.orgId = membership?.org_id ?? null;
     if (!this.orgId) {
-      // tenta novamente via ensureMembership (rpc fallback)
-      const retry = await this.userContext.ensureMembership();
-      this.orgId = retry?.org_id ?? null;
-    }
-    if (!this.orgId) {
-      // tenta deduzir org por qualquer cliente existente
-      try {
-        const { data: clientRow } = await this.supaService.client
-          .from('clientes')
-          .select('org_id')
-          .limit(1)
-          .maybeSingle();
-        this.orgId = (clientRow as any)?.org_id ?? null;
-      } catch (err) {
-        console.error('Erro ao deduzir org a partir de clientes:', err);
-      }
-    }
-    if (!this.orgId) {
-      // último recurso: org padrão usada pelo contexto
       this.orgId = '5b4d2ba0-3131-4b3f-8681-72f67a344321';
     }
     if (!this.orgId) {
@@ -136,16 +117,12 @@ export class SettingsComponent implements OnInit {
     this.error.set(null);
     this.success.set(false);
     try {
-      const { error } = await this.supaService.client
-        .from('clientes')
-        .insert({
-          org_id: this.orgId,
-          nome_fantasia: this.nomeFantasia,
-          cnpj: this.cnpj,
-          cidade: this.cidade,
-          uf: this.uf.toUpperCase(),
-        });
-      if (error) throw error;
+      await this.api.post('/clientes', {
+        nome_fantasia: this.nomeFantasia,
+        cnpj: this.cnpj,
+        cidade: this.cidade,
+        uf: this.uf.toUpperCase(),
+      });
       this.success.set(true);
       this.resetForm();
     } catch (e: any) {

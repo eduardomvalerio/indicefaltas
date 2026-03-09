@@ -1,7 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { from, Observable } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 import { environment } from '../environments/environment';
+import { SupaService } from './supa.service';
 
 export interface AssistantRequest {
   question: string;
@@ -39,16 +41,22 @@ export interface AssistantResponse {
 @Injectable({ providedIn: 'root' })
 export class AssistantService {
   private readonly http = inject(HttpClient);
-  private readonly endpoint = 'https://vbivdhuinibdsdqlldyh.functions.supabase.co/assistant';
+  private readonly supaService = inject(SupaService);
+  private readonly endpoint = `${environment.NG_APP_SUPABASE_URL}/functions/v1/assistant`;
   private readonly anonKey = environment.NG_APP_SUPABASE_ANON_KEY;
 
   ask(payload: AssistantRequest): Observable<AssistantResponse> {
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${this.anonKey}`,
-      apikey: this.anonKey,
-    };
-    return this.http.post<AssistantResponse>(this.endpoint, payload, { headers });
+    return from(this.supaService.client.auth.getSession()).pipe(
+      switchMap(({ data }) => {
+        const token = data?.session?.access_token || this.anonKey;
+        const headers = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          apikey: this.anonKey,
+        };
+        return this.http.post<AssistantResponse>(this.endpoint, payload, { headers });
+      })
+    );
   }
 
   /**

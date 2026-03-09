@@ -4,7 +4,7 @@
 import { Component, ChangeDetectionStrategy, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
-import { SupaService } from '../../services/supa.service';
+import { ApiService } from '../../services/api.service';
 import { Cliente } from '../../models/supabase.model';
 
 @Component({
@@ -53,30 +53,30 @@ export class ClientDashboardComponent implements OnInit {
   clientId = signal<string | null>(null);
   isLoading = signal(true);
 
-  constructor(private route: ActivatedRoute, private supaService: SupaService) {}
+  constructor(private route: ActivatedRoute, private api: ApiService) { }
 
   ngOnInit(): void {
     this.route.paramMap.subscribe((params) => {
       const id = params.get('clientId');
-      if (id) {
+      if (id && id !== 'undefined' && id !== 'null') {
         this.clientId.set(id);
         this.loadClient(id);
+      } else {
+        this.client.set(null);
+        this.isLoading.set(false);
       }
     });
   }
 
   async loadClient(id: string): Promise<void> {
     this.isLoading.set(true);
-    const { data, error } = await this.supaService.client
-      .from('clientes')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
+    try {
+      const data = await this.api.get<any>(`/clientes/${id}`);
+      if (data) {
+        this.client.set({ ...data, id: data._id || data.id } as Cliente);
+      }
+    } catch (error) {
       console.error('Cliente não encontrado:', error);
-    } else {
-      this.client.set(data as Cliente);
     }
     this.isLoading.set(false);
   }

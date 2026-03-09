@@ -1,12 +1,12 @@
 import { Injectable } from '@angular/core';
-import { SupaService } from './supa.service';
+import { ApiService } from './api.service';
 import { SummaryData } from '../models/product.model';
 import { AnaliseRun } from '../models/supabase.model';
 import { ActionPlan } from '../models/action-plan.model';
 
 @Injectable({ providedIn: 'root' })
 export class PersistAnalysisService {
-  constructor(private supaService: SupaService) {}
+  constructor(private api: ApiService) { }
 
   async saveRun(params: {
     org_id: string; cliente_id: string; created_by: string;
@@ -23,38 +23,7 @@ export class PersistAnalysisService {
     parados?: any;
   }): Promise<AnaliseRun> {
 
-    const { data: run, error: runError } = await this.supaService.client
-      .from('analise_runs')
-      .insert({
-        org_id: params.org_id,
-        cliente_id: params.cliente_id,
-        created_by: params.created_by,
-        periodo_dias: params.periodo_dias,
-        periodo_inicio: params.periodo_inicio ?? null,
-        periodo_fim: params.periodo_fim ?? null,
-        algoritmo_versao: params.algoritmo_versao,
-        path_vendas: params.path_vendas ?? null,
-        path_inventario: params.path_inventario ?? null,
-        summary: params.summary as any,
-        action_plan: params.action_plan ?? null,
-        top_faltas: params.top_faltas ?? null,
-        top_excessos: params.top_excessos ?? null,
-        top_parados: params.top_parados ?? null,
-        consolidated: params.consolidated ?? null,
-        faltas: params.faltas ?? null,
-        parados: params.parados ?? null,
-      })
-      .select()
-      .single();
-
-    if (runError) {
-      console.error('Erro ao salvar o run de análise:', runError);
-      throw runError;
-    }
-    if (!run) throw new Error("A inserção do 'run' não retornou dados.");
-
     const curvasData = (params.summary.curvas || []).map(c => ({
-      run_id: run.id,
       curva: c.curva,
       skus: c.skus,
       skus_parados: c.skusParados,
@@ -70,17 +39,25 @@ export class PersistAnalysisService {
       falta_percent: (c as any).faltaPercent ?? 0,
     }));
 
-    if (curvasData.length > 0) {
-      const { error: curvasError } = await this.supaService.client
-        .from('analise_runs_curvas')
-        .insert(curvasData);
+    const run = await this.api.post<AnaliseRun>('/analise-runs', {
+      cliente_id: params.cliente_id,
+      periodo_dias: params.periodo_dias,
+      periodo_inicio: params.periodo_inicio ?? null,
+      periodo_fim: params.periodo_fim ?? null,
+      algoritmo_versao: params.algoritmo_versao,
+      path_vendas: params.path_vendas ?? null,
+      path_inventario: params.path_inventario ?? null,
+      summary: params.summary,
+      action_plan: params.action_plan ?? null,
+      top_faltas: params.top_faltas ?? null,
+      top_excessos: params.top_excessos ?? null,
+      top_parados: params.top_parados ?? null,
+      consolidated: params.consolidated ?? null,
+      faltas: params.faltas ?? null,
+      parados: params.parados ?? null,
+      curvas: curvasData,
+    });
 
-      if (curvasError) {
-        console.error('Erro ao salvar os dados das curvas:', curvasError);
-        throw curvasError;
-      }
-    }
-
-    return run as AnaliseRun;
+    return run;
   }
 }

@@ -54,6 +54,41 @@ import { SummaryData, CurvaResumo } from '../../models/product.model';
     </div>
   </div>
 
+  <!-- BLOCO 1.5 – KPIs consultivos (estimativa financeira) -->
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-red-100">
+      <p class="text-xs font-medium text-red-700 uppercase">VENDA EM RISCO (90D)</p>
+      <p class="mt-2 text-2xl font-bold text-red-700">
+        {{ formatCurrency(vendaEmRisco90d(summaryData())) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Receita em itens com ruptura no período.</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-red-100">
+      <p class="text-xs font-medium text-red-700 uppercase">LUCRO EM RISCO (90D)</p>
+      <p class="mt-2 text-2xl font-bold text-red-700">
+        {{ formatCurrency(lucroEmRisco90d(summaryData())) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Margem potencial não capturada pela ruptura.</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-amber-100">
+      <p class="text-xs font-medium text-amber-700 uppercase">CAIXA LIBERÁVEL (R$)</p>
+      <p class="mt-2 text-2xl font-bold text-amber-800">
+        {{ formatCurrency(caixaLiberavel(summaryData())) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Excesso + estoque parado passíveis de ação.</p>
+    </div>
+
+    <div class="bg-white p-4 rounded-lg shadow-sm border border-emerald-100">
+      <p class="text-xs font-medium text-emerald-700 uppercase">POTENCIAL MENSAL (LUCRO)</p>
+      <p class="mt-2 text-2xl font-bold text-emerald-700">
+        {{ formatCurrency(potencialMensalLucro(summaryData())) }}
+      </p>
+      <p class="mt-1 text-[11px] text-slate-500">Projeção de recuperação média por mês.</p>
+    </div>
+  </div>
+
   <!-- BLOCO 2 – Indicadores operacionais -->
   <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
     <div class="bg-white p-4 rounded-lg shadow-sm">
@@ -183,6 +218,28 @@ export class SummaryViewComponent {
     const v = typeof value === 'number' ? value : 0;
     const p = base100 ? v : v * 100;
     return new Intl.NumberFormat('pt-BR', { style: 'percent', maximumFractionDigits: 2 }).format(p / 100);
+  }
+
+  vendaEmRisco90d(data?: SummaryData | null): number {
+    if (!data) return 0;
+    const venda = data.vendaTrimestre ?? 0;
+    const indiceFaltas = data.indiceFaltas ?? 0; // base 100
+    return venda * (indiceFaltas / 100);
+  }
+
+  lucroEmRisco90d(data?: SummaryData | null): number {
+    if (!data) return 0;
+    const margem = data.margemBrutaPercent ?? 0;
+    return this.vendaEmRisco90d(data) * margem;
+  }
+
+  caixaLiberavel(data?: SummaryData | null): number {
+    if (!data) return 0;
+    return (data.excessoValorTotal ?? 0) + (data.estoqueParadoValor ?? 0);
+  }
+
+  potencialMensalLucro(data?: SummaryData | null): number {
+    return this.lucroEmRisco90d(data) / 3;
   }
 
   // Ordena curvas A, B, C, SEM_GIRO para exibir sempre na mesma ordem

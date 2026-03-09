@@ -6,7 +6,7 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute, RouterModule } from '@angular/router';
 
 import { environment } from '../../environments/environment';
-import { SupaService } from '../../services/supa.service';
+import { ApiService } from '../../services/api.service';
 import { AnaliseRun } from '../../models/supabase.model';
 import { AssistantService, FarmaciaContext } from '../../services/assistant.service';
 import { Cliente } from '../../models/supabase.model';
@@ -148,7 +148,7 @@ declare var Chart: any;
       </div>
 
       @if(natashaReport()){
-        <div class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
+        <div id="natasha-report-panel" class="mt-6 p-4 bg-slate-50 rounded-lg border border-slate-200">
           <div class="flex items-center justify-between mb-3">
             <h3 class="text-lg font-semibold text-slate-800">{{ reportLabel }}</h3>
             <div class="space-x-2">
@@ -171,7 +171,7 @@ declare var Chart: any;
       }
 
       @if(selectedRun()){
-        <div class="mt-8 space-y-6">
+        <div id="analysis-detail-panel" class="mt-8 space-y-6">
           @if (selectedActionPlan()) {
             <app-action-plan-view [plan]="selectedActionPlan()"></app-action-plan-view>
           }
@@ -330,7 +330,7 @@ export class HistoryComponent implements OnInit {
 
   constructor(
     private route: ActivatedRoute,
-    private supaService: SupaService,
+    private api: ApiService,
     private assistant: AssistantService,
     private actionPlanService: ActionPlanService
   ) {
@@ -359,15 +359,10 @@ export class HistoryComponent implements OnInit {
     this.isLoading.set(true);
     this.error.set(null);
     try {
-      const { data, error } = await this.supaService.client
-        .from('analise_runs')
-        .select('*')
-        .eq('cliente_id', clientId)
-        .order('created_at', { ascending: false });
+      const data = await this.api.get<any[]>(`/analise-runs?cliente_id=${clientId}`);
 
-      if (error) throw error;
-
-      const runsData = data as AnaliseRun[];
+      // Map MongoDB _id to id for compatibility
+      const runsData = (data || []).map((r: any) => ({ ...r, id: r._id || r.id })) as AnaliseRun[];
       this.runs.set(runsData);
       // Pré-carrega relatórios já existentes no cache
       const cache: Record<string, string> = {};
@@ -375,7 +370,6 @@ export class HistoryComponent implements OnInit {
         if (r.natasha_report) cache[r.id] = r.natasha_report;
       });
       this.natashaCache.set(cache);
-      // The chart will be created when the canvas is available.
     } catch (e: any) {
       this.error.set(e.message || 'Erro ao buscar o histórico.');
     } finally {
@@ -489,8 +483,8 @@ export class HistoryComponent implements OnInit {
 
   async loadCliente(id: string): Promise<void> {
     try {
-      const { data, error } = await this.supaService.client.from('clientes').select('*').eq('id', id).maybeSingle();
-      if (!error && data) this.cliente.set(data as Cliente);
+      const data = await this.api.get<any>(`/clientes/${id}`);
+      if (data) this.cliente.set({ ...data, id: data._id || data.id } as Cliente);
     } catch (err) {
       console.error('Erro ao buscar cliente', err);
     }
@@ -502,6 +496,7 @@ export class HistoryComponent implements OnInit {
     if (cached && cached.trim().toLowerCase() !== 'sem resposta') {
       this.natashaReport.set(cached);
       this.selectedRunId.set(run.id);
+      this.focusReportPanel();
       return;
     }
 
@@ -521,6 +516,7 @@ export class HistoryComponent implements OnInit {
           this.natashaReport.set(report);
           this.setCache(run.id, report);
           this.salvarNatasha(run.id, report);
+          this.focusReportPanel();
         } else {
           // Não cacheia respostas vazias para permitir tentar novamente
           this.natashaReport.set('Sem resposta');
@@ -539,12 +535,16 @@ export class HistoryComponent implements OnInit {
     this.selectedRunId.set(null);
   }
 
-  verAnalise(run: AnaliseRun): void {
-    this.selectedRun.set(run);
+  async verAnalise(run: AnaliseRun): Promise<void> {
+    const detailed = (await this.loadRunDetails(run.id)) ?? run;
+    this.selectedRun.set(detailed);
     const plan =
-      (run.action_plan as ActionPlan | null) ??
-      (Array.isArray(run.consolidated) ? this.actionPlanService.buildPlan(run.consolidated, this.leadTimeDays) : null);
+      (detailed.action_plan as ActionPlan | null) ??
+      (Array.isArray(detailed.consolidated)
+        ? this.actionPlanService.buildPlan(detailed.consolidated, this.leadTimeDays)
+        : null);
     this.selectedActionPlan.set(plan);
+    this.focusAnalysisPanel();
   }
 
   getFaltas(run: AnaliseRun): any[] {
@@ -564,16 +564,32 @@ export class HistoryComponent implements OnInit {
     return cons.filter((p: any) => p.flag_parado);
   }
 
-  downloadXlsxLike(name: string, rows: any[]): void {
-    if (!rows || !rows.length) return;
-    const headers = Object.keys(rows[0]);
+  async downloadXlsxLike(name: string, rows: any[]): Promise<void> {
+    let dataRows = rows;
+    if (!dataRows || !dataRows.length) {
+      const selected = this.selectedRun();
+      if (selected?.id) {
+        const detailed = await this.loadRunDetails(selected.id);
+        if (detailed) {
+          this.selectedRun.set(detailed);
+          dataRows = this.resolveRowsForExport(name, detailed);
+        }
+      }
+    }
+
+    if (!dataRows || !dataRows.length) {
+      this.genError.set('Não há dados detalhados disponíveis para exportar este XLS nesta análise.');
+      return;
+    }
+
+    const headers = Object.keys(dataRows[0]);
     const sanitize = (v: any) => {
       if (v === null || v === undefined) return '';
       return String(v).replace(/\t/g, ' ').replace(/\n/g, ' ');
     };
     const content = [
       headers.join('\t'),
-      ...rows.map((r) => headers.map((h) => sanitize((r as any)[h])).join('\t')),
+      ...dataRows.map((r) => headers.map((h) => sanitize((r as any)[h])).join('\t')),
     ].join('\n');
     const blob = new Blob([content], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -696,6 +712,47 @@ export class HistoryComponent implements OnInit {
     this.natashaCache.set(next);
   }
 
+  private resolveRowsForExport(name: string, run: AnaliseRun): any[] {
+    if (name === 'faltas') return this.getFaltas(run);
+    if (name === 'excessos') return this.getExcessos(run);
+    if (name === 'parados') return this.getParados(run);
+    if (name === 'consolidado') return Array.isArray(run.consolidated) ? run.consolidated : [];
+    return [];
+  }
+
+  private async loadRunDetails(runId: string): Promise<AnaliseRun | null> {
+    try {
+      const data = await this.api.get<any>(`/analise-runs/${runId}`);
+      if (!data) return null;
+      const detailed = { ...data, id: data._id || data.id } as AnaliseRun;
+
+      // Mantém lista sincronizada para evitar perder os campos completos ao reabrir a mesma análise.
+      const updated = this.runs().map((r) => (r.id === detailed.id ? { ...r, ...detailed } : r));
+      this.runs.set(updated);
+      return detailed;
+    } catch (err) {
+      console.error('Erro ao carregar detalhes completos da análise', err);
+      return null;
+    }
+  }
+
+  private focusReportPanel(): void {
+    this.scrollToPanel('natasha-report-panel');
+  }
+
+  private focusAnalysisPanel(): void {
+    this.scrollToPanel('analysis-detail-panel');
+  }
+
+  private scrollToPanel(elementId: string): void {
+    setTimeout(() => {
+      document.getElementById(elementId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 0);
+  }
+
   formatPeriodo(run: AnaliseRun): string {
     if (run.periodo_inicio && run.periodo_fim) {
       const ini = new Date(run.periodo_inicio);
@@ -714,35 +771,25 @@ export class HistoryComponent implements OnInit {
 
   private async salvarNatasha(runId: string, report: string): Promise<void> {
     try {
-      const { error } = await this.supaService.client
-        .from('analise_runs')
-        .update({ natasha_report: report })
-        .eq('id', runId);
-      if (error) throw error;
+      await this.api.patch(`/analise-runs/${runId}/natasha-report`, { natasha_report: report });
     } catch (err) {
       console.error('Erro ao salvar natasha_report', err);
-      // Exibe aviso, mas mantém o relatório em tela/cache
       this.genError.set('Relatório gerado, mas não foi possível salvar no histórico.');
     }
   }
 
-  excluirAnalise(run: AnaliseRun): void {
+  async excluirAnalise(run: AnaliseRun): Promise<void> {
     if (!confirm('Deseja excluir esta análise? Esta ação não poderá ser desfeita.')) return;
-    this.supaService.client
-      .from('analise_runs')
-      .delete()
-      .eq('id', run.id)
-      .then(({ error }) => {
-        if (error) {
-          this.genError.set(error.message || 'Erro ao excluir análise.');
-          return;
-        }
-        this.runs.set(this.runs().filter((r) => r.id !== run.id));
-        if (this.selectedRunId() === run.id) {
-          this.selectedRun.set(null);
-          this.selectedActionPlan.set(null);
-          this.natashaReport.set(null);
-        }
-      });
+    try {
+      await this.api.delete(`/analise-runs/${run.id}`);
+      this.runs.set(this.runs().filter((r) => r.id !== run.id));
+      if (this.selectedRunId() === run.id) {
+        this.selectedRun.set(null);
+        this.selectedActionPlan.set(null);
+        this.natashaReport.set(null);
+      }
+    } catch (error: any) {
+      this.genError.set(error.message || 'Erro ao excluir análise.');
+    }
   }
 }

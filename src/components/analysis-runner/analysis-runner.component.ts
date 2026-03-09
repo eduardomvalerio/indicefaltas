@@ -9,9 +9,7 @@ import { DashboardComponent } from '../dashboard/dashboard.component';
 import { AnalysisResult } from '../../models/product.model';
 import { ActionPlan } from '../../models/action-plan.model';
 import { PersistAnalysisService } from '../../services/persist-analysis.service';
-import { FileStorageService } from '../../services/file-storage.service';
 import { AuthService } from '../../services/auth.service';
-import { SupaService } from '../../services/supa.service';
 import { environment } from '../../environments/environment';
 import { UserContextService } from '../../services/user-context.service';
 import { ActionPlanService } from '../../services/action-plan.service';
@@ -42,7 +40,6 @@ import { ActionPlanViewComponent } from '../action-plan-view/action-plan-view.co
 
   <app-file-uploader 
     (analysisComplete)="onAnalysisComplete($event)"
-    (filesSelected)="handleFileSelection($event)"
   ></app-file-uploader>
 } @else {
   <div class="mb-4 flex justify-end">
@@ -77,7 +74,6 @@ import { ActionPlanViewComponent } from '../action-plan-view/action-plan-view.co
         </div>
       </div>
   }
-
   @if (actionPlan()) {
     <div class="mb-6">
       <app-action-plan-view [plan]="actionPlan()"></app-action-plan-view>
@@ -98,26 +94,17 @@ export class AnalysisRunnerComponent implements OnInit {
   periodoFim = '';
 
   private clientId: string | null = null;
-  private salesFile: File | null = null;
-  private inventoryFile: File | null = null;
 
   constructor(
     private route: ActivatedRoute,
     private persistService: PersistAnalysisService,
-    private storageService: FileStorageService,
     private authService: AuthService,
-    private supaService: SupaService,
     private userContext: UserContextService,
     private actionPlanService: ActionPlanService
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.clientId = this.route.parent?.snapshot.paramMap.get('clientId') ?? null;
-  }
-
-  handleFileSelection(files: { sales: File; inventory: File | null }): void {
-    this.salesFile = files.sales;
-    this.inventoryFile = files.inventory;
   }
 
   async onAnalysisComplete(result: AnalysisResult): Promise<void> {
@@ -125,8 +112,9 @@ export class AnalysisRunnerComponent implements OnInit {
     this.actionPlan.set(
       this.actionPlanService.buildPlan(result.consolidated ?? [], environment.DEFAULT_LEAD_TIME_DAYS)
     );
+    const { topFaltas, topExcessos, topParados } = this.computeTops(result);
 
-    if (environment.enableCloudSave && this.clientId && this.salesFile) {
+    if (environment.enableCloudSave && this.clientId) {
       this.isSaving.set(true);
       this.saveError.set(null);
       try {
@@ -136,25 +124,7 @@ export class AnalysisRunnerComponent implements OnInit {
         const orgId = await this.resolveOrgId(user.id);
         if (!orgId) throw new Error('Organização do usuário não encontrada.');
 
-        const datePrefix = new Date().toISOString().slice(0, 10);
-        const basePath = `${orgId}/${this.clientId}/${datePrefix}_${Date.now()}`;
-
-        const pathVendas = await this.storageService.upload(
-          'farmacia-analises',
-          `${basePath}/vendas.xlsx`,
-          this.salesFile
-        );
-        let pathInventario: string | null = null;
-        if (this.inventoryFile) {
-          pathInventario = await this.storageService.upload(
-            'farmacia-analises',
-            `${basePath}/inventario.xlsx`,
-            this.inventoryFile
-          );
-        }
-        const { topFaltas, topExcessos, topParados } = this.computeTops(result);
-
-        await this.persistService.saveRun({
+        const runPayload = {
           org_id: orgId,
           cliente_id: this.clientId,
           created_by: user.id,
@@ -162,8 +132,8 @@ export class AnalysisRunnerComponent implements OnInit {
           periodo_inicio: this.periodoInicio || null,
           periodo_fim: this.periodoFim || null,
           algoritmo_versao: 'v1.0.1',
-          path_vendas: pathVendas,
-          path_inventario: pathInventario,
+          path_vendas: null,
+          path_inventario: null,
           summary: result.summary,
           action_plan: this.actionPlan(),
           top_faltas: topFaltas,
@@ -172,7 +142,8 @@ export class AnalysisRunnerComponent implements OnInit {
           consolidated: result.consolidated ?? null,
           faltas: result.faltas ?? null,
           parados: result.parados ?? null,
-        });
+        };
+        await this.saveRunWithSizeFallback(runPayload);
       } catch (e: any) {
         this.saveError.set(e.message || 'Erro ao salvar a análise na nuvem.');
         console.error(e);
@@ -185,8 +156,7 @@ export class AnalysisRunnerComponent implements OnInit {
   startOver(): void {
     this.analysisResult.set(null);
     this.actionPlan.set(null);
-    this.salesFile = null;
-    this.inventoryFile = null;
+    this.saveError.set(null);
     this.periodoInicio = '';
     this.periodoFim = '';
   }
@@ -230,32 +200,38 @@ export class AnalysisRunnerComponent implements OnInit {
     return { topFaltas: faltas, topExcessos: excessos, topParados: parados };
   }
 
+  private isOversizedPayloadError(error: any): boolean {
+    const msg = String(error?.message || '').toLowerCase();
+    return (
+      msg.includes('request entity too large') ||
+      msg.includes('payloadtoolargeerror') ||
+      msg.includes('erro 413') ||
+      msg.includes('413') ||
+      msg.includes('bsonobj size') ||
+      msg.includes('object to large')
+    );
+  }
+
+  private async saveRunWithSizeFallback(payload: any): Promise<void> {
+    try {
+      await this.persistService.saveRun(payload);
+    } catch (error: any) {
+      if (!this.isOversizedPayloadError(error)) throw error;
+
+      console.warn('Payload muito grande para salvar completo. Persistindo run em modo compacto.');
+      await this.persistService.saveRun({
+        ...payload,
+        consolidated: null,
+        faltas: null,
+        parados: null,
+      });
+    }
+  }
+
   private async resolveOrgId(userId: string): Promise<string | null> {
-    // 1) Tenta o contexto já carregado
     const ctx = await this.userContext.ensureMembership();
     if (ctx?.org_id) return ctx.org_id;
-
-    // 2) Tenta RPC current_org_id (RLS-friendly)
-    try {
-      const { data } = await this.supaService.client.rpc('current_org_id');
-      if (data) return data as string;
-    } catch (err) {
-      console.error('Erro ao consultar current_org_id()', err);
-    }
-
-    // 3) Tenta org_members (maybeSingle evita erro 406)
-    try {
-      const { data } = await this.supaService.client
-        .from('org_members')
-        .select('org_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      if (data?.org_id) return data.org_id as string;
-    } catch (err) {
-      console.error('Erro ao consultar org_members', err);
-    }
-
-    // 4) Último recurso: org padrão conhecida
+    // Último recurso: org padrão conhecida
     return '5b4d2ba0-3131-4b3f-8681-72f67a344321';
   }
 }

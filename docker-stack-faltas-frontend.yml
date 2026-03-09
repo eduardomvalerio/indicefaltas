@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  faltas-frontend:
+    image: faltas-frontend:latest
+    networks:
+      - eduardo
+    deploy:
+      replicas: 1
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.faltas-frontend.rule=Host(`faltas.farmabrasilcontabilidade.com.br`)"
+        - "traefik.http.routers.faltas-frontend.entrypoints=websecure"
+        - "traefik.http.routers.faltas-frontend.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.faltas-frontend.service=faltas-frontend"
+        - "traefik.http.routers.faltas-frontend.priority=1"
+        - "traefik.http.services.faltas-frontend.loadbalancer.server.port=80"
+        - "traefik.http.services.faltas-frontend.loadbalancer.passHostHeader=true"
+
+networks:
+  eduardo:
+    external: true

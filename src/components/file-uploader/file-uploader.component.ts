@@ -33,7 +33,13 @@ import { AnalysisService } from '../../services/analysis.service';
       <!-- Sales File Upload -->
       <div>
         <label for="sales-file" class="block text-sm font-medium text-slate-700 mb-2">1. Planilha de Vendas (90 dias)</label>
-        <label class="w-full flex items-center px-4 py-3 bg-white text-sky-600 rounded-lg shadow-sm tracking-wide border border-sky-300 cursor-pointer hover:bg-sky-100 hover:text-sky-700 transition-colors">
+        <label
+          class="w-full flex items-center px-4 py-3 bg-white text-sky-600 rounded-lg shadow-sm tracking-wide border cursor-pointer transition-colors"
+          [class]="salesDragActive() ? 'border-sky-500 bg-sky-100 text-sky-700' : 'border-sky-300 hover:bg-sky-100 hover:text-sky-700'"
+          (dragover)="onDragOver($event, 'sales')"
+          (dragleave)="onDragLeave($event, 'sales')"
+          (drop)="onDrop($event, 'sales')"
+        >
           <svg class="w-8 h-8" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
             <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4 4-4-4h3V9h2v2z" />
           </svg>
@@ -45,7 +51,13 @@ import { AnalysisService } from '../../services/analysis.service';
       <!-- Inventory File Upload -->
       <div>
         <label for="inventory-file" class="block text-sm font-medium text-slate-700 mb-2">2. Planilha de Inventário (opcional)</label>
-        <label class="w-full flex items-center px-4 py-3 bg-white text-sky-600 rounded-lg shadow-sm tracking-wide border border-sky-300 cursor-pointer hover:bg-sky-100 hover:text-sky-700 transition-colors">
+        <label
+          class="w-full flex items-center px-4 py-3 bg-white text-sky-600 rounded-lg shadow-sm tracking-wide border cursor-pointer transition-colors"
+          [class]="inventoryDragActive() ? 'border-sky-500 bg-sky-100 text-sky-700' : 'border-sky-300 hover:bg-sky-100 hover:text-sky-700'"
+          (dragover)="onDragOver($event, 'inventory')"
+          (dragleave)="onDragLeave($event, 'inventory')"
+          (drop)="onDrop($event, 'inventory')"
+        >
           <svg class="w-8 h-8" fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
             <path d="M16.88 9.1A4 4 0 0 1 16 17H5a5 5 0 0 1-1-9.9V7a3 3 0 0 1 4.52-2.59A4.98 4.98 0 0 1 17 8c0 .38-.04.74-.12 1.1zM11 11h3l-4 4-4-4h3V9h2v2z" />
           </svg>
@@ -90,6 +102,8 @@ export class FileUploaderComponent {
 
   salesFile = signal<File | null>(null);
   inventoryFile = signal<File | null>(null);
+  salesDragActive = signal(false);
+  inventoryDragActive = signal(false);
   isLoading = signal(false);
   error = signal<string | null>(null);
 
@@ -101,19 +115,39 @@ export class FileUploaderComponent {
   onFileChange(event: Event, type: 'sales' | 'inventory'): void {
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
-      if (type === 'sales') {
-        this.salesFile.set(input.files[0]);
-        this.salesFileName.set(input.files[0].name);
-      } else {
-        this.inventoryFile.set(input.files[0]);
-        this.inventoryFileName.set(input.files[0].name);
-      }
-      this.error.set(null);
-
-      if (this.salesFile()) {
-        this.filesSelected.emit({ sales: this.salesFile()!, inventory: this.inventoryFile() });
-      }
+      this.handleSelectedFile(input.files[0], type);
     }
+  }
+
+  onDragOver(event: DragEvent, type: 'sales' | 'inventory'): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (type === 'sales') {
+      this.salesDragActive.set(true);
+    } else {
+      this.inventoryDragActive.set(true);
+    }
+  }
+
+  onDragLeave(event: DragEvent, type: 'sales' | 'inventory'): void {
+    event.preventDefault();
+    event.stopPropagation();
+    if (type === 'sales') {
+      this.salesDragActive.set(false);
+    } else {
+      this.inventoryDragActive.set(false);
+    }
+  }
+
+  onDrop(event: DragEvent, type: 'sales' | 'inventory'): void {
+    event.preventDefault();
+    event.stopPropagation();
+    this.salesDragActive.set(false);
+    this.inventoryDragActive.set(false);
+
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) return;
+    this.handleSelectedFile(file, type);
   }
 
   async processFiles(): Promise<void> {
@@ -146,6 +180,27 @@ export class FileUploaderComponent {
       this.error.set(e.message || 'Ocorreu um erro inesperado ao processar os arquivos.');
     } finally {
       this.isLoading.set(false);
+    }
+  }
+
+  private handleSelectedFile(file: File, type: 'sales' | 'inventory'): void {
+    const lowerName = file.name.toLowerCase();
+    if (!lowerName.endsWith('.xlsx') && !lowerName.endsWith('.xls')) {
+      this.error.set('Arquivo inválido. Envie uma planilha .xlsx ou .xls.');
+      return;
+    }
+
+    if (type === 'sales') {
+      this.salesFile.set(file);
+      this.salesFileName.set(file.name);
+    } else {
+      this.inventoryFile.set(file);
+      this.inventoryFileName.set(file.name);
+    }
+
+    this.error.set(null);
+    if (this.salesFile()) {
+      this.filesSelected.emit({ sales: this.salesFile()!, inventory: this.inventoryFile() });
     }
   }
 }

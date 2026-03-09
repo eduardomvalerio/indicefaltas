@@ -1,10 +1,7 @@
-
-
-
 import { Component, ChangeDetectionStrategy, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
-import { SupaService } from '../../services/supa.service';
+import { ApiService } from '../../services/api.service';
 import { UserContextService } from '../../services/user-context.service';
 import { Cliente } from '../../models/supabase.model';
 
@@ -92,7 +89,7 @@ export class ClientListComponent implements OnInit {
   error = signal<string | null>(null);
   isAdmin = this.userContext.isAdmin;
 
-  constructor(private supaService: SupaService, private userContext: UserContextService) {}
+  constructor(private api: ApiService, private userContext: UserContextService) { }
 
   ngOnInit(): void {
     this.userContext.ensureMembership();
@@ -103,9 +100,11 @@ export class ClientListComponent implements OnInit {
     this.isLoading.set(true);
     this.error.set(null);
     try {
-      const { data, error } = await this.supaService.client.from('clientes').select('*');
-      if (error) throw error;
-      this.clients.set(data as Cliente[]);
+      const data = await this.api.get<any[]>('/clientes');
+      const normalized = (data || [])
+        .map((row) => ({ ...row, id: row?.id || row?._id }))
+        .filter((row) => !!row.id) as Cliente[];
+      this.clients.set(normalized);
     } catch (e: any) {
       this.error.set(e.message || 'Erro ao buscar clientes.');
     } finally {

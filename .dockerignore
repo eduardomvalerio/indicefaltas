@@ -1,0 +1,9 @@
+node_modules
+dist
+.git
+.angular
+*.md
+migrate-*.mjs
+Dockerfile
+docker-stack-*.yml
+.env
