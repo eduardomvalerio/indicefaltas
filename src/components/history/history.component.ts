@@ -159,7 +159,7 @@ declare var Chart: any;
               <button class="px-3 py-1 text-slate-500 text-sm hover:text-slate-700" (click)="limparRelatorio()">Fechar</button>
             </div>
           </div>
-          <div class="prose max-w-none text-justify leading-relaxed whitespace-pre-line">{{ natashaReport() }}</div>
+          <div class="report-markdown max-w-none text-justify leading-relaxed" [innerHTML]="renderedReportHtml()"></div>
         </div>
       }
 
@@ -300,6 +300,31 @@ declare var Chart: any;
   </div>
 }
   `,
+  styles: [`
+    .report-markdown h1, .report-markdown h2, .report-markdown h3, .report-markdown h4 {
+      font-weight: 700;
+      color: #1f2937;
+      margin: 1rem 0 0.5rem;
+      line-height: 1.3;
+    }
+    .report-markdown h1 { font-size: 1.5rem; }
+    .report-markdown h2 { font-size: 1.25rem; }
+    .report-markdown h3 { font-size: 1.125rem; }
+    .report-markdown h4 { font-size: 1rem; }
+    .report-markdown p { margin: 0.5rem 0 0.9rem; color: #334155; }
+    .report-markdown ul, .report-markdown ol { margin: 0.5rem 0 1rem; padding-left: 1.25rem; color: #334155; }
+    .report-markdown ul { list-style: disc; }
+    .report-markdown ol { list-style: decimal; }
+    .report-markdown li { margin: 0.2rem 0; }
+    .report-markdown strong { font-weight: 700; color: #0f172a; }
+    .report-markdown code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      background: #eef2ff;
+      color: #1e3a8a;
+      border-radius: 4px;
+      padding: 0.1rem 0.3rem;
+    }
+  `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HistoryComponent implements OnInit {
@@ -320,6 +345,7 @@ export class HistoryComponent implements OnInit {
   natashaCache = signal<Record<string, string>>({});
   selectedRun = signal<AnaliseRun | null>(null);
   selectedActionPlan = signal<ActionPlan | null>(null);
+  renderedReportHtml = computed(() => this.markdownToHtml(this.natashaReport() ?? ''));
   chartPeriodDays = signal(90);
   chartRunCount = computed(() => this.getRunsForChart().length);
   readonly reportLabel = 'Relatório Farma Brasil';
@@ -603,6 +629,7 @@ export class HistoryComponent implements OnInit {
   exportarPDF(): void {
     const report = this.natashaReport();
     if (!report) return;
+    const reportHtml = this.markdownToHtml(report);
     const titulo = this.cliente()?.nome_fantasia ?? 'Relatório';
     const reportLabel = this.reportLabel;
     const logoUrl = this.reportLogoUrl
@@ -622,8 +649,20 @@ export class HistoryComponent implements OnInit {
       <style>
         body { font-family: "Helvetica Neue", Arial, sans-serif; padding: 32px; line-height: 1.6; color: #1f2937; }
         h1 { font-size: 22px; margin: 0; font-weight: 700; }
-        p { text-align: justify; }
-        .topic { font-weight: 700; margin-top: 12px; margin-bottom: 4px; }
+        h2, h3, h4 { color: #1f2937; margin-top: 18px; margin-bottom: 8px; }
+        h2 { font-size: 18px; }
+        h3 { font-size: 16px; }
+        h4 { font-size: 14px; }
+        p { text-align: justify; margin-top: 8px; margin-bottom: 12px; color: #334155; }
+        ul, ol { margin-top: 6px; margin-bottom: 14px; padding-left: 22px; color: #334155; }
+        ul { list-style: disc; }
+        ol { list-style: decimal; }
+        li { margin: 3px 0; }
+        strong { color: #0f172a; }
+        code {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          background: #eef2ff; color: #1e3a8a; padding: 1px 4px; border-radius: 4px;
+        }
         .report-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
         .report-logo { height: 56px; max-width: 220px; object-fit: contain; }
       </style>
@@ -633,7 +672,7 @@ export class HistoryComponent implements OnInit {
         <head>${style}</head>
         <body>
           ${headerHtml}
-          <pre style="white-space: pre-wrap; text-align: justify;">${report}</pre>
+          <div class="report-markdown">${reportHtml}</div>
         </body>
       </html>
     `;
@@ -641,6 +680,107 @@ export class HistoryComponent implements OnInit {
     win.document.close();
     win.focus();
     win.print();
+  }
+
+  private markdownToHtml(markdown: string): string {
+    const text = (markdown || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return '';
+
+    const lines = text.split('\n');
+    const html: string[] = [];
+    const paragraphBuffer: string[] = [];
+    let inUl = false;
+    let inOl = false;
+
+    const flushParagraph = () => {
+      if (!paragraphBuffer.length) return;
+      const paragraph = this.renderInlineMarkdown(paragraphBuffer.join(' ').trim());
+      html.push(`<p>${paragraph}</p>`);
+      paragraphBuffer.length = 0;
+    };
+
+    const closeLists = () => {
+      if (inUl) {
+        html.push('</ul>');
+        inUl = false;
+      }
+      if (inOl) {
+        html.push('</ol>');
+        inOl = false;
+      }
+    };
+
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) {
+        flushParagraph();
+        closeLists();
+        continue;
+      }
+
+      const heading = line.match(/^(#{1,6})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        closeLists();
+        const level = Math.min(6, heading[1].length);
+        html.push(`<h${level}>${this.renderInlineMarkdown(heading[2])}</h${level}>`);
+        continue;
+      }
+
+      const ordered = line.match(/^\d+\.\s+(.+)$/);
+      if (ordered) {
+        flushParagraph();
+        if (inUl) {
+          html.push('</ul>');
+          inUl = false;
+        }
+        if (!inOl) {
+          html.push('<ol>');
+          inOl = true;
+        }
+        html.push(`<li>${this.renderInlineMarkdown(ordered[1])}</li>`);
+        continue;
+      }
+
+      const bullet = line.match(/^[-*]\s+(.+)$/);
+      if (bullet) {
+        flushParagraph();
+        if (inOl) {
+          html.push('</ol>');
+          inOl = false;
+        }
+        if (!inUl) {
+          html.push('<ul>');
+          inUl = true;
+        }
+        html.push(`<li>${this.renderInlineMarkdown(bullet[1])}</li>`);
+        continue;
+      }
+
+      closeLists();
+      paragraphBuffer.push(line);
+    }
+
+    flushParagraph();
+    closeLists();
+    return html.join('\n');
+  }
+
+  private renderInlineMarkdown(input: string): string {
+    let safe = this.escapeHtml(input);
+    safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    return safe;
+  }
+
+  private escapeHtml(input: string): string {
+    return input
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private montarContexto(run: AnaliseRun, previous: AnaliseRun | null): FarmaciaContext {
