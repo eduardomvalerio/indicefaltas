@@ -1027,12 +1027,19 @@ export class HistoryComponent implements OnInit {
 
   formatPeriodo(run: AnaliseRun): string {
     if (run.periodo_inicio && run.periodo_fim) {
-      const ini = new Date(run.periodo_inicio);
-      const fim = new Date(run.periodo_fim);
-      const fmt = (d: Date) => d.toLocaleDateString('pt-BR');
-      return `${fmt(ini)} — ${fmt(fim)}`;
+      return `${this.formatDateInput(run.periodo_inicio)} — ${this.formatDateInput(run.periodo_fim)}`;
     }
     return `últimos ${run.periodo_dias} dias`;
+  }
+
+  private formatDateInput(value: string): string {
+    // Evita bug de fuso ao parsear "YYYY-MM-DD" com new Date(...).
+    const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+
+    const dt = new Date(value);
+    if (isNaN(dt.getTime())) return value;
+    return dt.toLocaleDateString('pt-BR');
   }
 
   impactoRun(run: AnaliseRun): number {
