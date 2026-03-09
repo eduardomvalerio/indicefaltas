@@ -71,6 +71,11 @@ export class AssistantService {
 
     const question = [
       'Gerar análise e plano de ação para o cliente.',
+      'Formato obrigatório: Markdown limpo.',
+      'Use títulos de seção com "###".',
+      'Use listas com "-" e lista numerada para passos.',
+      'Não usar tabela no formato pipe (com "|").',
+      'Em "Plano de ação em 5 passos", escrever 5 itens numerados (1..5), um por linha.',
       'Entregáveis:',
       '1) Resumo executivo',
       '2) Diagnóstico (ruptura, excesso, giro) por curva',

@@ -324,6 +324,26 @@ declare var Chart: any;
       border-radius: 4px;
       padding: 0.1rem 0.3rem;
     }
+    .report-markdown table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.5rem 0 1rem;
+      font-size: 0.92rem;
+      color: #334155;
+      table-layout: fixed;
+    }
+    .report-markdown th, .report-markdown td {
+      border: 1px solid #cbd5e1;
+      padding: 0.4rem 0.45rem;
+      vertical-align: top;
+      word-break: break-word;
+    }
+    .report-markdown th {
+      background: #f8fafc;
+      color: #0f172a;
+      font-weight: 700;
+      text-align: left;
+    }
   `],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -663,6 +683,9 @@ export class HistoryComponent implements OnInit {
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
           background: #eef2ff; color: #1e3a8a; padding: 1px 4px; border-radius: 4px;
         }
+        table { width: 100%; border-collapse: collapse; margin: 8px 0 14px; table-layout: fixed; }
+        th, td { border: 1px solid #cbd5e1; padding: 6px 8px; vertical-align: top; word-break: break-word; font-size: 12px; }
+        th { background: #f8fafc; color: #0f172a; text-align: left; font-weight: 700; }
         .report-header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
         .report-logo { height: 56px; max-width: 220px; object-fit: contain; }
       </style>
@@ -689,12 +712,25 @@ export class HistoryComponent implements OnInit {
     const lines = text.split('\n');
     const html: string[] = [];
     const paragraphBuffer: string[] = [];
+    const tableBuffer: string[] = [];
     let inUl = false;
     let inOl = false;
 
+    const flushTable = () => {
+      if (!tableBuffer.length) return;
+      const tableHtml = this.tableLinesToHtml(tableBuffer);
+      if (tableHtml) {
+        html.push(tableHtml);
+      } else {
+        const fallback = tableBuffer.map((l) => this.renderInlineMarkdown(l)).join('<br>');
+        html.push(`<p>${fallback}</p>`);
+      }
+      tableBuffer.length = 0;
+    };
+
     const flushParagraph = () => {
       if (!paragraphBuffer.length) return;
-      const paragraph = this.renderInlineMarkdown(paragraphBuffer.join(' ').trim());
+      const paragraph = this.renderParagraphBlock(paragraphBuffer);
       html.push(`<p>${paragraph}</p>`);
       paragraphBuffer.length = 0;
     };
@@ -713,8 +749,28 @@ export class HistoryComponent implements OnInit {
     for (const raw of lines) {
       const line = raw.trim();
       if (!line) {
+        flushTable();
         flushParagraph();
         closeLists();
+        continue;
+      }
+
+      if (this.isTableLine(line)) {
+        flushParagraph();
+        closeLists();
+        tableBuffer.push(line);
+        continue;
+      }
+
+      if (tableBuffer.length) {
+        flushTable();
+      }
+
+      const autoHeadingLevel = this.detectAutoHeadingLevel(line);
+      if (autoHeadingLevel) {
+        flushParagraph();
+        closeLists();
+        html.push(`<h${autoHeadingLevel}>${this.renderInlineMarkdown(line)}</h${autoHeadingLevel}>`);
         continue;
       }
 
@@ -761,13 +817,89 @@ export class HistoryComponent implements OnInit {
       paragraphBuffer.push(line);
     }
 
+    flushTable();
     flushParagraph();
     closeLists();
     return html.join('\n');
   }
 
+  private renderParagraphBlock(lines: string[]): string {
+    const rendered = lines.map((l) => this.renderInlineMarkdown(l.trim())).filter(Boolean);
+    if (!rendered.length) return '';
+    if (rendered.length === 1) return rendered[0];
+
+    const avgLen = rendered.reduce((acc, l) => acc + l.length, 0) / rendered.length;
+    const useLineBreaks = avgLen < 110;
+    return useLineBreaks ? rendered.join('<br>') : rendered.join(' ');
+  }
+
+  private detectAutoHeadingLevel(line: string): number | null {
+    const normalized = this.normalizeForMatch(line);
+    const knownSections = new Set([
+      'resumo executivo',
+      'diagnostico',
+      'top alertas e acoes recomendadas',
+      'plano de acao em 5 passos',
+      'plano de acao',
+      'okrs sugeridos',
+      'acoes recomendadas',
+    ]);
+    if (knownSections.has(normalized)) return 3;
+    return null;
+  }
+
+  private normalizeForMatch(value: string): string {
+    return value
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  private isTableLine(line: string): boolean {
+    const cells = this.getTableCells(line);
+    return cells.length >= 2;
+  }
+
+  private getTableCells(line: string): string[] {
+    if (!line.includes('|')) return [];
+    const raw = line.replace(/^\|/, '').replace(/\|$/, '');
+    const cells = raw.split('|').map((c) => c.trim());
+    return cells.length >= 2 ? cells : [];
+  }
+
+  private isSeparatorRow(cells: string[]): boolean {
+    return cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c));
+  }
+
+  private tableLinesToHtml(lines: string[]): string | null {
+    const parsed = lines
+      .map((line) => this.getTableCells(line))
+      .filter((cells) => cells.length >= 2);
+
+    if (parsed.length < 2) return null;
+
+    const hasSeparator = parsed.length > 1 && this.isSeparatorRow(parsed[1]);
+    const header = parsed[0].map((c) => this.renderInlineMarkdown(c));
+    const bodyRows = (hasSeparator ? parsed.slice(2) : parsed.slice(1)).filter((r) => r.length === header.length);
+
+    if (!bodyRows.length) return null;
+
+    const thead = `<thead><tr>${header.map((h) => `<th>${h}</th>`).join('')}</tr></thead>`;
+    const tbody = `<tbody>${bodyRows
+      .map((row) => `<tr>${row.map((cell) => `<td>${this.renderInlineMarkdown(cell)}</td>`).join('')}</tr>`)
+      .join('')}</tbody>`;
+
+    return `<table>${thead}${tbody}</table>`;
+  }
+
   private renderInlineMarkdown(input: string): string {
     let safe = this.escapeHtml(input);
+    const label = safe.match(/^([A-Za-zÀ-ÿ0-9][A-Za-zÀ-ÿ0-9 _()/.-]{1,48}):\s*(.*)$/);
+    if (label) {
+      const rest = label[2] ? ` ${label[2]}` : '';
+      safe = `<strong>${label[1]}:</strong>${rest}`;
+    }
     safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');

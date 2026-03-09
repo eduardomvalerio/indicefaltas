@@ -34,7 +34,10 @@ serve(async (req) => {
   const prompt = [
     'Você é um consultor especialista em gestão de estoque farmacêutico.',
     'Responda em português do Brasil com linguagem clara e prática.',
+    'Responda em Markdown limpo.',
+    'Use títulos com "###" para seções.',
     'Estruture a resposta em: Resumo executivo, Diagnóstico, Ações recomendadas e OKRs.',
+    'Não use tabela no formato pipe (com "|"). Para plano de ação, use lista numerada simples (1..5), um item por linha.',
     `Pergunta: ${question}`,
     `Contexto JSON: ${JSON.stringify(context)}`,
   ].join('\n\n');
