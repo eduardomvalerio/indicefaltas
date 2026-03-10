@@ -66,49 +66,51 @@ Aplicação web para análise de estoque farmacêutico com foco em ruptura, exce
 
 ## Deploy em produção (Docker Swarm)
 
-Referência atual de ambiente:
-- Servidor: `root@147.79.81.247`
-- Diretório da aplicação: `/opt/faltas-frontend`
-- Stack file: `docker-stack-faltas-frontend.yml`
-- Serviço: `faltas-fe_faltas-frontend`
-- URL: `https://faltas.farmabrasilcontabilidade.com.br`
+Referência de ambiente (modelo):
+- Servidor: `<deploy-user>@<deploy-host>`
+- Diretório da aplicação: `/opt/<app-dir>`
+- Stack file: `<stack-file>.yml`
+- Serviço: `<stack>_<service>`
+- URL pública: `https://<seu-dominio>`
 
 ### Pré-requisitos
 - Docker e Swarm ativos no servidor.
-- Rede externa do Traefik já criada (`eduardo`).
+- Rede externa do proxy/reverse proxy já criada (ex.: Traefik).
 - Acesso SSH ao servidor.
+- Usuário de deploy com permissões mínimas (evite `root`).
 
 ### Passo a passo
 1. Sincronize o código local para o servidor:
    ```bash
    rsync -avz --delete \
      --exclude 'node_modules' --exclude '.angular' --exclude 'dist' --exclude '.git' \
-     -e "ssh -o StrictHostKeyChecking=no" \
-     ./ root@147.79.81.247:/opt/faltas-frontend/
+     ./ <deploy-user>@<deploy-host>:/opt/<app-dir>/
    ```
 2. Gere a imagem do frontend no servidor:
    ```bash
-   ssh -o StrictHostKeyChecking=no root@147.79.81.247 \
-     "cd /opt/faltas-frontend && docker build -t faltas-frontend:latest ."
+   ssh <deploy-user>@<deploy-host> \
+     "cd /opt/<app-dir> && docker build -t <frontend-image>:latest ."
    ```
 3. Aplique/atualize a stack:
    ```bash
-   ssh -o StrictHostKeyChecking=no root@147.79.81.247 \
-     "cd /opt/faltas-frontend && docker stack deploy -c docker-stack-faltas-frontend.yml faltas-fe"
+   ssh <deploy-user>@<deploy-host> \
+     "cd /opt/<app-dir> && docker stack deploy -c <stack-file>.yml <stack-name>"
    ```
 4. Force rollout para garantir nova task com a imagem recém-buildada:
    ```bash
-   ssh -o StrictHostKeyChecking=no root@147.79.81.247 \
-     "docker service update --force faltas-fe_faltas-frontend"
+   ssh <deploy-user>@<deploy-host> \
+     "docker service update --force <stack>_<service>"
    ```
 5. Valide status do serviço e publicação:
    ```bash
-   ssh -o StrictHostKeyChecking=no root@147.79.81.247 \
-     "docker service ps --no-trunc faltas-fe_faltas-frontend | sed -n '1,10p'"
-   curl -I https://faltas.farmabrasilcontabilidade.com.br
+   ssh <deploy-user>@<deploy-host> \
+     "docker service ps --no-trunc <stack>_<service> | sed -n '1,10p'"
+   curl -I https://<seu-dominio>
    ```
 
 ## Observações
 
 - O frontend depende do backend/API para leitura e gravação de dados.
 - O comportamento de autenticação depende da configuração do Supabase Auth do ambiente.
+- Não publique em repositório público IPs, usuários, paths internos, nomes reais de serviço e comandos com detalhes sensíveis.
+- Mantenha runbooks com dados reais em documentação privada.
